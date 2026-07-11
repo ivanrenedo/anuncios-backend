@@ -32,14 +32,22 @@ export class NotificationsProcessor extends WorkerHost {
 
   async process(job: Job<DeliveryJobData>): Promise<void> {
     const {
-      userId, type, title, body, notificationId,
-      relatedProductId, relatedUserId, sectionId, filterCat,
+      userId,
+      type,
+      title,
+      body,
+      notificationId,
+      relatedProductId,
+      relatedUserId,
+      sectionId,
+      filterCat,
     } = job.data;
     await this.push.sendToUser(userId, {
       title,
       body,
       data: {
-        notificationId, type,
+        notificationId,
+        type,
         ...(relatedProductId && { productId: relatedProductId }),
         ...(relatedUserId && { userId: relatedUserId }),
         ...(sectionId && { sectionId }),

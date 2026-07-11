@@ -33,7 +33,8 @@ export class VerificationsService {
       throw new BadRequestException('Ya tienes una solicitud pendiente.');
 
     if (existing?.status === 'rejected' && existing.reviewedAt) {
-      const daysSince = (Date.now() - new Date(existing.reviewedAt).getTime()) / 86_400_000;
+      const daysSince =
+        (Date.now() - new Date(existing.reviewedAt).getTime()) / 86_400_000;
       if (daysSince < 7)
         throw new BadRequestException(
           `Debes esperar ${Math.ceil(7 - daysSince)} día(s) para volver a solicitar la verificación.`,
@@ -41,13 +42,21 @@ export class VerificationsService {
     }
 
     if (!user.phone)
-      throw new BadRequestException('Debes verificar tu teléfono antes de solicitar la verificación.');
+      throw new BadRequestException(
+        'Debes verificar tu teléfono antes de solicitar la verificación.',
+      );
     if (!user.email)
-      throw new BadRequestException('Debes confirmar tu email antes de solicitar la verificación.');
+      throw new BadRequestException(
+        'Debes confirmar tu email antes de solicitar la verificación.',
+      );
     if (!user.avatarUrl)
-      throw new BadRequestException('Debes subir una foto de perfil antes de solicitar la verificación.');
+      throw new BadRequestException(
+        'Debes subir una foto de perfil antes de solicitar la verificación.',
+      );
     if (!user.name || user.name.trim().length < 3)
-      throw new BadRequestException('Debes completar tu nombre antes de solicitar la verificación.');
+      throw new BadRequestException(
+        'Debes completar tu nombre antes de solicitar la verificación.',
+      );
 
     return this.prisma.verificationRequest.create({
       data: { userId },

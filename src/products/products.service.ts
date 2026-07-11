@@ -1,7 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,6 +13,9 @@ import { UpdateProductInput } from './dto/update-product.input';
 import { SearchProductsInput } from './dto/search-products.input';
 import { Prisma } from '@prisma/client';
 import { NotificationEvents } from '../notifications/notifications.events';
+import { PLAN_LIMITS, BOOST_PRICE, activePlan } from '../common/plan-limits';
+import { UserPlan } from '../users/dto/user-plan.enum';
+import { AuditService } from '../audit/audit.service';
 
 const FULL_INCLUDE = {
   seller: true,
@@ -23,21 +29,37 @@ const FULL_INCLUDE = {
   jobDetail: true,
 };
 
+function applyBoostSort<
+  T extends { boostedUntil?: Date | null; bumpedAt?: Date | null },
+>(products: T[]): T[] {
+  const now = new Date();
+  return [...products].sort((a, b) => {
+    const aBoosted = a.boostedUntil && new Date(a.boostedUntil) > now ? 1 : 0;
+    const bBoosted = b.boostedUntil && new Date(b.boostedUntil) > now ? 1 : 0;
+    if (bBoosted !== aBoosted) return bBoosted - aBoosted;
+    const aBump = a.bumpedAt ? new Date(a.bumpedAt).getTime() : 0;
+    const bBump = b.bumpedAt ? new Date(b.bumpedAt).getTime() : 0;
+    return bBump - aBump;
+  });
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private audit: AuditService,
   ) {}
 
   async findAll(take = 20, skip = 0) {
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where: { status: 'active' },
       include: FULL_INCLUDE,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { bumpedAt: 'desc' },
       take,
       skip,
     });
+    return applyBoostSort(products);
   }
 
   async findOne(id: string) {
@@ -50,8 +72,17 @@ export class ProductsService {
   }
 
   /** All products regardless of status — admin panel only. */
-  async findAllAdmin(take = 200, skip = 0) {
+  async findAllAdmin(take = 200, skip = 0, query?: string) {
+    const where: Prisma.ProductWhereInput = query?.trim()
+      ? {
+          OR: [
+            { title: { contains: query.trim(), mode: 'insensitive' } },
+            { seller: { name: { contains: query.trim(), mode: 'insensitive' } } },
+          ],
+        }
+      : {};
     return this.prisma.product.findMany({
+      where,
       include: FULL_INCLUDE,
       orderBy: { createdAt: 'desc' },
       take,
@@ -93,19 +124,79 @@ export class ProductsService {
         orderBy = { price: 'desc' };
         break;
       default:
-        orderBy = { createdAt: 'desc' };
+        orderBy = { bumpedAt: 'desc' };
     }
 
-    return this.prisma.product.findMany({
+    const take = input.take ?? 20;
+    let products = await this.prisma.product.findMany({
       where,
       include: FULL_INCLUDE,
       orderBy,
-      take: input.take ?? 20,
+      take,
       skip: input.skip ?? 0,
     });
+
+    // Typo tolerance: when the exact `contains` match comes up short, fall
+    // back to trigram similarity on the title (pg_trgm). "iphon" → "iPhone".
+    if (input.query && products.length < 5) {
+      try {
+        const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id
+          FROM products
+          WHERE similarity(title, ${input.query}) > 0.25
+          ORDER BY similarity(title, ${input.query}) DESC
+          LIMIT ${take}
+        `;
+        const found = new Set(products.map((p) => p.id));
+        const extraIds = rows.map((r) => r.id).filter((id) => !found.has(id));
+        if (extraIds.length > 0) {
+          // Keep every non-text filter (category, city, price…) — only the
+          // exact-text OR condition is replaced by the similarity match.
+          const { ...fuzzyWhere } = where;
+          const extras = await this.prisma.product.findMany({
+            where: { ...fuzzyWhere, id: { in: extraIds } },
+            include: FULL_INCLUDE,
+          });
+          const rank = new Map(extraIds.map((id, i) => [id, i]));
+          extras.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+          products = [...products, ...extras].slice(0, take);
+        }
+      } catch {
+        // pg_trgm not installed (e.g. restricted managed DB) — exact results only.
+      }
+    }
+
+    // Search impressions: fire-and-forget so the search response never waits
+    // on the counter write.
+    if (products.length > 0) {
+      void this.prisma.product
+        .updateMany({
+          where: { id: { in: products.map((p) => p.id) } },
+          data: { impressions: { increment: 1 } },
+        })
+        .catch(() => {});
+    }
+
+    return applyBoostSort(products);
   }
 
   async create(sellerId: string, input: CreateProductInput) {
+    const seller = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: { plan: true, planExpiresAt: true },
+    });
+    const plan = this.activePlan(seller);
+    const limits = PLAN_LIMITS[plan];
+
+    const activeCount = await this.prisma.product.count({
+      where: { sellerId, status: 'active' },
+    });
+    if (activeCount >= limits.maxActiveProducts) {
+      throw new BadRequestException(
+        `Tu plan ${plan} permite un máximo de ${limits.maxActiveProducts} anuncios activos. Elimina o oculta alguno para publicar otro.`,
+      );
+    }
+
     const {
       imageUrls,
       attributes,
@@ -116,6 +207,12 @@ export class ProductsService {
       jobDetail,
       ...productData
     } = input;
+
+    if (imageUrls && imageUrls.length > limits.maxImagesPerProduct) {
+      throw new BadRequestException(
+        `Tu plan ${plan} permite un máximo de ${limits.maxImagesPerProduct} fotos por anuncio.`,
+      );
+    }
 
     const product = await this.prisma.product.create({
       data: {
@@ -155,6 +252,40 @@ export class ProductsService {
         'No tienes permiso para editar este anuncio',
       );
 
+    if (
+      input.imageUrls ||
+      (input.status === 'active' && product.status !== 'active')
+    ) {
+      const seller = await this.prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { plan: true, planExpiresAt: true },
+      });
+      const plan = this.activePlan(seller);
+      const limits = PLAN_LIMITS[plan];
+
+      if (
+        input.imageUrls &&
+        input.imageUrls.length > limits.maxImagesPerProduct
+      ) {
+        throw new BadRequestException(
+          `Tu plan permite un máximo de ${limits.maxImagesPerProduct} fotos por anuncio.`,
+        );
+      }
+
+      // Reactivating a hidden listing counts against the same quota as
+      // publishing a new one — otherwise hide/publish/unhide bypasses the cap.
+      if (input.status === 'active' && product.status !== 'active') {
+        const activeCount = await this.prisma.product.count({
+          where: { sellerId, status: 'active' },
+        });
+        if (activeCount >= limits.maxActiveProducts) {
+          throw new BadRequestException(
+            `Tu plan ${plan} permite un máximo de ${limits.maxActiveProducts} anuncios activos. Elimina o oculta alguno para reactivar este.`,
+          );
+        }
+      }
+    }
+
     const {
       categoryId,
       imageUrls,
@@ -170,10 +301,14 @@ export class ProductsService {
 
     if (imageUrls) {
       await this.prisma.productImage.deleteMany({ where: { productId: id } });
-      data.images = { create: imageUrls.map((url, i) => ({ url, sortOrder: i })) };
+      data.images = {
+        create: imageUrls.map((url, i) => ({ url, sortOrder: i })),
+      };
     }
     if (marketplaceDetail) {
-      await this.prisma.marketplaceDetail.deleteMany({ where: { productId: id } });
+      await this.prisma.marketplaceDetail.deleteMany({
+        where: { productId: id },
+      });
       data.marketplaceDetail = { create: marketplaceDetail };
     }
     if (vehicleDetail) {
@@ -270,13 +405,215 @@ export class ProductsService {
   }
 
   async findByCategory(categoryId: string, take = 20, skip = 0) {
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where: { categoryId, status: 'active' },
       include: FULL_INCLUDE,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { bumpedAt: 'desc' },
       take,
       skip,
     });
+    return applyBoostSort(products);
+  }
+
+  /** Moderation: hide or restore any listing, notifying the seller on hide. */
+  async adminSetStatus(
+    id: string,
+    status: 'active' | 'hide',
+    reason?: string,
+    adminId?: string,
+  ) {
+    const product = await this.prisma.product.update({
+      where: { id },
+      data: { status },
+      include: FULL_INCLUDE,
+    });
+
+    if (status === 'hide') {
+      this.events.emit(NotificationEvents.ProductModerated, {
+        productId: product.id,
+        productTitle: product.title,
+        sellerId: product.sellerId,
+        reason,
+      });
+    }
+
+    this.audit.log(
+      adminId,
+      status === 'hide' ? 'hide_product' : 'restore_product',
+      'product',
+      id,
+      reason ?? product.title,
+    );
+
+    return product;
+  }
+
+  /** Admin fix-up of any listing (wrong price/category/typos). No ownership check. */
+  async adminUpdate(id: string, input: UpdateProductInput, adminId?: string) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Anuncio no encontrado');
+
+    const { categoryId, imageUrls, marketplaceDetail, vehicleDetail, propertyDetail, serviceDetail, jobDetail, ...rest } = input;
+    const data: any = { ...rest };
+    if (categoryId) data.category = { connect: { id: categoryId } };
+
+    const updated = await this.prisma.product.update({
+      where: { id },
+      data,
+      include: FULL_INCLUDE,
+    });
+
+    this.audit.log(adminId, 'update_product', 'product', id, updated.title);
+    return updated;
+  }
+
+  /** Remove a single image (e.g. inappropriate photo) without hiding the listing. */
+  async adminDeleteImage(imageId: string, adminId?: string) {
+    const image = await this.prisma.productImage.findUnique({
+      where: { id: imageId },
+    });
+    if (!image) throw new NotFoundException('Imagen no encontrada');
+
+    await this.prisma.productImage.delete({ where: { id: imageId } });
+    this.audit.log(adminId, 'delete_image', 'product', image.productId, image.url);
+
+    return this.prisma.product.findUnique({
+      where: { id: image.productId },
+      include: FULL_INCLUDE,
+    });
+  }
+
+  /** A buyer tapped the WhatsApp/call contact button on this listing. */
+  async registerContact(id: string) {
+    return this.prisma.product.update({
+      where: { id },
+      data: { contacts: { increment: 1 } },
+      include: FULL_INCLUDE,
+    });
+  }
+
+  /**
+   * Unique-visitor views per day across all the seller's listings, for the
+   * stats chart. Buckets are keyed by the visitor's *last* view (the dedup
+   * table upserts viewedAt), which is a good-enough daily approximation.
+   */
+  async sellerViewsDaily(sellerId: string, days = 7) {
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - (days - 1));
+
+    const rows = await this.prisma.productView.findMany({
+      where: {
+        viewedAt: { gte: since },
+        product: { sellerId },
+      },
+      select: { viewedAt: true },
+    });
+
+    const buckets = new Map<string, number>();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setDate(since.getDate() + i);
+      buckets.set(d.toISOString().slice(0, 10), 0);
+    }
+    for (const r of rows) {
+      const key = r.viewedAt.toISOString().slice(0, 10);
+      if (buckets.has(key)) buckets.set(key, buckets.get(key) + 1);
+    }
+    return [...buckets.entries()].map(([date, count]) => ({ date, count }));
+  }
+
+  async bumpProduct(id: string, adminId?: string) {
+    const product = await this.prisma.product.update({
+      where: { id },
+      data: { bumpedAt: new Date() },
+      include: FULL_INCLUDE,
+    });
+    this.audit.log(adminId, 'bump', 'product', id, product.title);
+    return product;
+  }
+
+  async boostProduct(id: string, days = 7, adminId?: string) {
+    const until = new Date();
+    until.setDate(until.getDate() + days);
+    const product = await this.prisma.product.update({
+      where: { id },
+      data: { boostedUntil: until },
+      include: FULL_INCLUDE,
+    });
+
+    this.events.emit(NotificationEvents.ProductBoosted, {
+      productId: product.id,
+      productTitle: product.title,
+      sellerId: product.sellerId,
+      boostedUntil: until,
+    });
+
+    // Boosts are sold manually (WhatsApp) — activating one IS the payment.
+    await this.prisma.payment.create({
+      data: {
+        userId: product.sellerId,
+        amount: BOOST_PRICE,
+        concept: 'boost',
+        productId: product.id,
+        createdById: adminId ?? null,
+      },
+    });
+
+    this.audit.log(adminId, 'boost', 'product', id, `${days} días — ${product.title}`);
+    return product;
+  }
+
+  /**
+   * Cancel an active boost (mistake or refund). Does NOT delete the payment —
+   * remove it from the ledger separately if the money was returned.
+   */
+  async unboostProduct(id: string, adminId?: string) {
+    const product = await this.prisma.product.update({
+      where: { id },
+      data: { boostedUntil: null },
+      include: FULL_INCLUDE,
+    });
+    this.audit.log(adminId, 'unboost', 'product', id, product.title);
+    return product;
+  }
+
+  async autoBump() {
+    const now = new Date();
+    const premiumCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const starCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const premiumBumped = await this.prisma.product.updateMany({
+      where: {
+        status: 'active',
+        bumpedAt: { lt: premiumCutoff },
+        seller: {
+          plan: 'PREMIUM',
+          OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
+        },
+      },
+      data: { bumpedAt: now },
+    });
+
+    const starBumped = await this.prisma.product.updateMany({
+      where: {
+        status: 'active',
+        bumpedAt: { lt: starCutoff },
+        seller: {
+          plan: 'STAR',
+          OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
+        },
+      },
+      data: { bumpedAt: now },
+    });
+
+    return { premiumBumped: premiumBumped.count, starBumped: starBumped.count };
+  }
+
+  private activePlan(
+    user: { plan: string; planExpiresAt: Date | null } | null,
+  ): UserPlan {
+    return activePlan(user);
   }
 }
 

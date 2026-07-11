@@ -8,8 +8,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserInput } from './dto/update-user.input';
 import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
+import { ChangePlanInput } from './dto/change-plan.input';
 import { hashPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
+import { PLAN_PRICES } from '../common/plan-limits';
+import { AuditService } from '../audit/audit.service';
 import { NotificationEvents } from '../notifications/notifications.events';
 
 @Injectable()
@@ -17,10 +20,24 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private audit: AuditService,
   ) {}
 
-  async findAll() {
-    return this.prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+  async findAll(take = 500, skip = 0, query?: string) {
+    const q = query?.trim();
+    return this.prisma.user.findMany({
+      where: q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    });
   }
 
   async findOne(id: string) {
@@ -102,8 +119,8 @@ export class UsersService {
       if (permChanged)
         changes.push(
           input.permission === 'GRANTED'
-            ? 'se otorgó acceso al panel de administración'
-            : 'se revocó el acceso al panel de administración',
+            ? 'se otorgó acceso al sistema'
+            : 'se revocó el acceso al sistema',
         );
       this.events.emit(NotificationEvents.UserSecurity, {
         userId: id,
@@ -172,6 +189,113 @@ export class UsersService {
     return this.prisma.follower.findMany({
       where: { followerId: userId },
       include: { followed: true },
+    });
+  }
+
+  /**
+   * Moderation ban: blocks every authenticated request (the JWT strategy
+   * rejects `permission = DENIED`) and pulls the user's listings off the
+   * marketplace. Their data stays intact for a possible unsuspension.
+   */
+  async suspendUser(id: string, reason?: string, adminId?: string) {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: {
+        suspended: true,
+        suspendedReason: reason ?? null,
+        permission: 'DENIED',
+      },
+    });
+
+    await this.prisma.product.updateMany({
+      where: { sellerId: id, status: 'active' },
+      data: { status: 'hide' },
+    });
+
+    this.audit.log(adminId, 'suspend_user', 'user', id, reason ?? user.name);
+    return user;
+  }
+
+  async unsuspendUser(id: string, adminId?: string) {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: {
+        suspended: false,
+        suspendedReason: null,
+        permission: 'GRANTED',
+      },
+    });
+
+    await this.prisma.product.updateMany({
+      where: { sellerId: id, status: 'hide' },
+      data: { status: 'active' },
+    });
+
+    this.audit.log(adminId, 'unsuspend_user', 'user', id, user.name);
+    return user;
+  }
+
+  async changePlan(adminId: string, input: ChangePlanInput) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: input.userId },
+      select: { id: true, plan: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          plan: input.plan,
+          planExpiresAt: input.expiresAt ?? null,
+        },
+      }),
+      this.prisma.planChange.create({
+        data: {
+          userId: input.userId,
+          oldPlan: user.plan,
+          newPlan: input.plan,
+          expiresAt: input.expiresAt ?? null,
+          reason: input.reason,
+          changedById: adminId,
+        },
+      }),
+    ]);
+
+    // Revenue ledger: paid plans are sold manually (WhatsApp), so activating
+    // one here IS the payment record. Downgrades to FREE register nothing.
+    if (input.plan !== 'FREE' && PLAN_PRICES[input.plan]) {
+      await this.prisma.payment.create({
+        data: {
+          userId: input.userId,
+          amount: PLAN_PRICES[input.plan],
+          concept: input.plan === 'STAR' ? 'plan_star' : 'plan_premium',
+          note: input.reason ?? null,
+          createdById: adminId,
+        },
+      });
+    }
+
+    this.events.emit(NotificationEvents.UserSecurity, {
+      userId: input.userId,
+      summary: `Tu plan ha sido actualizado a ${input.plan}.`,
+    });
+
+    this.audit.log(
+      adminId,
+      'change_plan',
+      'user',
+      input.userId,
+      `${user.plan} → ${input.plan}`,
+    );
+
+    return updated;
+  }
+
+  async planHistory(userId: string) {
+    return this.prisma.planChange.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

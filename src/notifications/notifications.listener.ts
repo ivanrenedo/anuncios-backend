@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
 import {
   NotificationEvents,
+  ProductBoostedEvent,
+  ProductModeratedEvent,
   ProductFavoritedEvent,
   ProductPriceChangedEvent,
   ProductPublishedEvent,
@@ -105,6 +107,84 @@ export class NotificationsListener {
         }),
       ),
     );
+  }
+
+  /** `alert` — a new product matches someone's saved search. */
+  @OnEvent(NotificationEvents.ProductPublished, { async: true })
+  async onProductPublishedSavedSearches(payload: ProductPublishedEvent) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: payload.productId },
+      include: { category: { select: { id: true, parentId: true } } },
+    });
+    if (!product || product.status !== 'active') return;
+
+    const searches = await this.prisma.savedSearch.findMany({
+      where: { userId: { not: payload.sellerId } },
+    });
+    if (searches.length === 0) return;
+
+    const title = product.title.toLowerCase();
+    const description = (product.description ?? '').toLowerCase();
+    const city = (product.city ?? '').toLowerCase();
+    const price = Number(product.price);
+    const categoryIds = new Set(
+      [product.categoryId, product.category?.parentId].filter(Boolean),
+    );
+
+    // One notification per user even if several of their searches match.
+    const notified = new Set<string>();
+    for (const s of searches) {
+      if (notified.has(s.userId)) continue;
+
+      if (s.query) {
+        const q = s.query.toLowerCase();
+        if (!title.includes(q) && !description.includes(q)) continue;
+      }
+      if (s.categoryId && !categoryIds.has(s.categoryId)) continue;
+      if (s.city && !city.includes(s.city.toLowerCase())) continue;
+      if (s.priceMin != null && price < Number(s.priceMin)) continue;
+      if (s.priceMax != null && price > Number(s.priceMax)) continue;
+
+      notified.add(s.userId);
+      const label = s.query || s.city || 'tu búsqueda guardada';
+      await this.notifications.create({
+        userId: s.userId,
+        type: 'alert',
+        title: 'Nuevo anuncio para tu búsqueda',
+        body: `"${payload.productTitle}" coincide con «${label}».`,
+        relatedProductId: payload.productId,
+      });
+    }
+  }
+
+  /** `system` — the admin activated a paid boost on the seller's listing. */
+  @OnEvent(NotificationEvents.ProductBoosted, { async: true })
+  async onProductBoosted(payload: ProductBoostedEvent) {
+    const until = payload.boostedUntil.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'long',
+    });
+    await this.notifications.create({
+      userId: payload.sellerId,
+      type: 'system',
+      title: 'Tu anuncio ya está destacado ✨',
+      body: `"${payload.productTitle}" aparecerá arriba en los resultados hasta el ${until}.`,
+      relatedProductId: payload.productId,
+    });
+  }
+
+  /** `report` — a moderator hid the seller's product. */
+  @OnEvent(NotificationEvents.ProductModerated, { async: true })
+  async onProductModerated(payload: ProductModeratedEvent) {
+    await this.notifications.create({
+      userId: payload.sellerId,
+      type: 'report',
+      title: 'Tu anuncio fue ocultado por moderación',
+      body: payload.reason
+        ? `"${payload.productTitle}": ${payload.reason}`
+        : `"${payload.productTitle}" incumple las normas de la plataforma. Contacta con soporte si crees que es un error.`,
+      relatedProductId: payload.productId,
+    });
   }
 
   /** `verified` — a seller earned the verification badge. */

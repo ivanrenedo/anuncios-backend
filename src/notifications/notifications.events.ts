@@ -64,11 +64,29 @@ export interface ProductPublishedEvent {
   sellerAvatarUrl?: string | null;
 }
 
+/** An admin boosted a product (manual payment flow). Notifies the seller. */
+export interface ProductBoostedEvent {
+  productId: string;
+  productTitle: string;
+  sellerId: string;
+  boostedUntil: Date;
+}
+
+/** A moderator hid a product. Notifies the seller with the reason. */
+export interface ProductModeratedEvent {
+  productId: string;
+  productTitle: string;
+  sellerId: string;
+  reason?: string;
+}
+
 /** Event name constants — single source of truth for emitters and listeners. */
 export const NotificationEvents = {
   ProductFavorited: 'product.favorited',
   ProductPriceChanged: 'product.price.changed',
   ProductPublished: 'product.published',
+  ProductBoosted: 'product.boosted',
+  ProductModerated: 'product.moderated',
   UserVerified: 'user.verified',
   UserFollowed: 'user.followed',
   ReviewCreated: 'review.created',

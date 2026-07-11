@@ -27,6 +27,10 @@ model User {
   showPhone       Boolean         @default(true) @map("show_phone")
   permission      PermissionAcces @default(GRANTED)
   themePreference String          @default("system") @map("theme_preference") @db.VarChar(10)
+  plan            UserPlan        @default(FREE)
+  planExpiresAt   DateTime?       @map("plan_expires_at")
+  suspended       Boolean         @default(false)
+  suspendedReason String?         @map("suspended_reason")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -47,10 +51,71 @@ model User {
   homeSuggestions       HomeSuggestion[]       @relation("HomeSuggestionReviewer")
   verificationRequests VerificationRequest[]
   verificationsReviewed VerificationRequest[] @relation("VerificationReviewer")
+  planChanges     PlanChange[]     @relation("PlanChangeUser")
+  planChangesBy   PlanChange[]     @relation("PlanChangeAdmin")
+  savedSearches   SavedSearch[]
+  payments        Payment[]        @relation("PaymentUser")
+  paymentsCreated Payment[]        @relation("PaymentAdmin")
+  adminActions    AdminAction[]    @relation("AdminActionAdmin")
   rol             Rol?             @relation(fields: [rolId], references: [id])
   rolId           String?
 
   @@map("users")
+}
+
+/// A buyer's saved search: notifies the owner when a newly published product
+/// matches the stored criteria.
+model SavedSearch {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  query      String?  @db.VarChar(120)
+  categoryId String?  @map("category_id")
+  city       String?  @db.VarChar(50)
+  priceMin   Decimal? @map("price_min") @db.Decimal(12, 2)
+  priceMax   Decimal? @map("price_max") @db.Decimal(12, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_searches")
+}
+
+/// Audit trail of admin actions (hide/suspend/boost/plan change…): who did
+/// what to which entity, for accountability once there is more than one admin.
+model AdminAction {
+  id         String   @id @default(uuid())
+  adminId    String?  @map("admin_id")
+  action     String   @db.VarChar(40)
+  targetType String   @map("target_type") @db.VarChar(20) // product | user | payment
+  targetId   String   @map("target_id")
+  detail     String?  @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  admin User? @relation("AdminActionAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("admin_actions")
+}
+
+/// Manual-payment ledger: one row per plan purchase or boost, registered when
+/// the admin activates it. Source of truth for revenue accounting.
+model Payment {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  amount      Decimal  @db.Decimal(12, 2)
+  currency    String   @default("XAF") @db.VarChar(5)
+  concept     String   @db.VarChar(30) // plan_star | plan_premium | boost
+  note        String?  @db.VarChar(255)
+  productId   String?  @map("product_id")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User  @relation("PaymentUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("PaymentAdmin", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("payments")
 }
 
 model Rol {
@@ -100,6 +165,10 @@ model Product {
   status         ProductStatus @default(active)
   views          Int           @default(0)
   favoritesCount Int           @default(0) @map("favorites_count")
+  contacts       Int           @default(0)
+  impressions    Int           @default(0)
+  bumpedAt       DateTime      @default(now()) @map("bumped_at")
+  boostedUntil   DateTime?     @map("boosted_until")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
@@ -117,6 +186,8 @@ model Product {
   serviceDetail     ServiceDetail?
   jobDetail         JobDetail?
 
+  @@index([bumpedAt])
+  @@index([boostedUntil])
   @@map("products")
 }
 
@@ -390,6 +461,7 @@ enum NotificationType {
   review
   system
   security
+  alert
 }
 
 enum Action {
@@ -447,6 +519,12 @@ enum VerificationStatus {
   rejected
 }
 
+enum UserPlan {
+  FREE
+  STAR
+  PREMIUM
+}
+
 model VerificationRequest {
   id             String             @id @default(uuid())
   userId         String             @map("user_id")
@@ -460,4 +538,21 @@ model VerificationRequest {
   reviewedBy User? @relation("VerificationReviewer", fields: [reviewedById], references: [id])
 
   @@map("verification_requests")
+}
+
+model PlanChange {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  oldPlan     UserPlan @map("old_plan")
+  newPlan     UserPlan @map("new_plan")
+  expiresAt   DateTime? @map("expires_at")
+  reason      String?  @db.VarChar(500)
+  changedById String   @map("changed_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User @relation("PlanChangeUser", fields: [userId], references: [id], onDelete: Cascade)
+  changedBy User @relation("PlanChangeAdmin", fields: [changedById], references: [id])
+
+  @@index([userId])
+  @@map("plan_changes")
 }

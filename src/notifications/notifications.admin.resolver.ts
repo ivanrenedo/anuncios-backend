@@ -29,7 +29,7 @@ export class NotificationsAdminResolver {
     @Args('input') input: BroadcastInput,
   ): Promise<number> {
     const users = await this.prisma.user.findMany({
-      where: { notifMarketing: true },
+      where: { notifMarketing: true, ...this.segmentWhere(input) },
       select: { id: true },
     });
     await this.fanOut(
@@ -46,7 +46,7 @@ export class NotificationsAdminResolver {
     @Args('input') input: BroadcastInput,
   ): Promise<number> {
     const users = await this.prisma.user.findMany({
-      where: { notifMessages: true },
+      where: { notifMessages: true, ...this.segmentWhere(input) },
       select: { id: true },
     });
     await this.fanOut(
@@ -55,6 +55,18 @@ export class NotificationsAdminResolver {
       input,
     );
     return users.length;
+  }
+
+  /** Optional audience segmentation: by plan tier and/or city substring. */
+  private segmentWhere(input: BroadcastInput) {
+    const where: Record<string, unknown> = {};
+    if (input.plan && ['FREE', 'STAR', 'PREMIUM'].includes(input.plan)) {
+      where.plan = input.plan;
+    }
+    if (input.city?.trim()) {
+      where.location = { contains: input.city.trim(), mode: 'insensitive' };
+    }
+    return where;
   }
 
   /**

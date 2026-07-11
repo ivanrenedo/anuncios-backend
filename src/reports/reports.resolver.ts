@@ -44,9 +44,7 @@ export class ReportsResolver {
   /** Admin panel: permanently delete one or more reports. Returns the count. */
   @Mutation(() => Int)
   @UseGuards(AdminGuard)
-  async deleteReports(
-    @Args('ids', { type: () => [String] }) ids: string[],
-  ) {
+  async deleteReports(@Args('ids', { type: () => [String] }) ids: string[]) {
     return this.service.deleteReports(ids);
   }
 }

@@ -14,6 +14,8 @@ import { DeliveryJobData } from './notifications.processor';
 const TYPE_TO_PREFERENCE: Partial<Record<NotificationType, keyof User>> = {
   marketing: 'notifMarketing',
   price: 'notifOffers',
+  // Saved-search alerts are offer-like: the user explicitly asked for them.
+  alert: 'notifOffers',
   // Everything social/review/status routes through the "messages" bucket.
   like: 'notifMessages',
   follow: 'notifMessages',

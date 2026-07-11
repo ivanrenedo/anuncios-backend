@@ -33,6 +33,12 @@ export class AuthResolver {
     return { ...tokens, user: null };
   }
 
+  @Mutation(() => Boolean)
+  @UseGuards(GqlAuthGuard)
+  async logout(@GetCurrentUserId() userId: string) {
+    return this.authService.logout(userId);
+  }
+
   @Query(() => UserModel, { nullable: true })
   @UseGuards(GqlAuthGuard)
   async me(@GetCurrentUserId() userId: string) {

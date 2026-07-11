@@ -10,6 +10,16 @@ enum Action {
   update
 }
 
+type AdminActionModel {
+  action: String!
+  admin: UserModel
+  createdAt: DateTime!
+  detail: String
+  id: ID!
+  targetId: String!
+  targetType: String!
+}
+
 input AdminLoginInput {
   email: String!
   pin: String!
@@ -33,7 +43,9 @@ type AuthResponse {
 input BroadcastInput {
   avatar: String
   body: String
+  city: String
   filterCat: String
+  plan: String
   sectionId: String
   title: String!
 }
@@ -55,6 +67,13 @@ type CategoryModel {
 input ChangePinInput {
   newPin: String!
   pinChangeToken: String!
+}
+
+input ChangePlanInput {
+  expiresAt: DateTime
+  plan: UserPlan!
+  reason: String
+  userId: String!
 }
 
 input CreateCategoryInput {
@@ -136,6 +155,14 @@ input CreateRolInput {
   label: String!
 }
 
+input CreateSavedSearchInput {
+  categoryId: String
+  city: String
+  priceMax: Float
+  priceMin: Float
+  query: String
+}
+
 input CreateServiceDetailInput {
   offerType: String
 }
@@ -156,6 +183,11 @@ input CreateVehicleDetailInput {
   operation: String
   transmission: String
   year: Int
+}
+
+type DailyCountModel {
+  count: Int!
+  date: String!
 }
 
 """
@@ -253,31 +285,42 @@ type MarketplaceDetailModel {
 
 type Mutation {
   acceptHomeSuggestion(id: String!): HomeSectionModel!
+  adminDeleteProductImage(imageId: String!): ProductModel!
   adminLogin(input: AdminLoginInput!): AuthResponse!
+  adminSetProductStatus(id: String!, reason: String, status: String!): ProductModel!
+  adminUpdateProduct(id: String!, input: UpdateProductInput!): ProductModel!
   adminUpdateUser(id: String!, input: AdminUpdateUserInput!): UserModel!
   approveVerification(id: String!): VerificationModel!
+  boostProduct(days: Int, id: String!): ProductModel!
+  bumpProduct(id: String!): ProductModel!
   changePinWithOtp(input: ChangePinInput!): OtpResponse!
+  changePlan(input: ChangePlanInput!): UserModel!
+  contactProduct(id: String!): ProductModel!
   createCategory(input: CreateCategoryInput!): CategoryModel!
   createHomeSection(input: CreateHomeSectionInput!): HomeSectionModel!
   createProduct(input: CreateProductInput!): ProductModel!
   createReport(input: CreateReportInput!): ReportModel!
   createReview(input: CreateReviewInput!): ReviewModel!
   createRol(input: CreateRolInput!): RolModel!
+  createSavedSearch(input: CreateSavedSearchInput!): SavedSearchModel!
   createUser(input: CreateUserInput!): UserModel!
   deleteAllNotifications: Int!
   deleteCategory(id: String!): CategoryModel!
   deleteHomeSection(id: String!): Boolean!
   deleteMyAccount: UserModel!
   deleteNotification(id: String!): NotificationModel!
+  deletePayment(id: String!): PaymentModel!
   deleteProduct(id: String!): ProductModel!
   deleteReports(ids: [String!]!): Int!
   deleteReview(id: String!): ReviewModel!
   deleteRol(id: String!): RolModel!
+  deleteSavedSearch(id: String!): SavedSearchModel!
   deleteUser(id: String!): UserModel!
   deleteVerificationRequests(ids: [String!]!): Boolean!
   dismissHomeSuggestion(id: String!): HomeSuggestionModel!
   followUser(userId: String!): FollowerModel!
   googleLogin(input: GoogleLoginInput!): AuthResponse!
+  logout: Boolean!
   markAllNotificationsRead: Boolean!
   markNotificationRead(id: String!): NotificationModel!
   refreshToken(token: String!): AuthResponse!
@@ -291,9 +334,12 @@ type Mutation {
   sendMarketingNotification(input: BroadcastInput!): Int!
   sendPhoneOtp(input: SendPhoneOtpInput!): OtpResponse!
   sendSystemNotification(input: BroadcastInput!): Int!
+  suspendUser(id: String!, reason: String): UserModel!
   toggleFavorite(productId: String!): ToggleFavoriteResponse!
   trackHomeSectionEvent(event: String!, sectionId: String!, viewerKey: String!): Boolean!
+  unboostProduct(id: String!): ProductModel!
   unfollowUser(userId: String!): FollowerModel!
+  unsuspendUser(id: String!): UserModel!
   updateCategory(id: String!, input: UpdateCategoryInput!): CategoryModel!
   updateHomeSection(id: String!, input: UpdateHomeSectionInput!): HomeSectionModel!
   updateProduct(id: String!, input: UpdateProductInput!): ProductModel!
@@ -327,10 +373,34 @@ type OtpResponse {
   success: Boolean!
 }
 
+type PaymentModel {
+  amount: Float!
+  concept: String!
+  createdAt: DateTime!
+  createdBy: UserModel
+  currency: String!
+  id: ID!
+  note: String
+  productId: String
+  user: UserModel
+  userId: String!
+}
+
 """Whether a user can access the admin panel."""
 enum PermissionAcces {
   DENIED
   GRANTED
+}
+
+type PlanChangeModel {
+  changedById: String!
+  createdAt: DateTime!
+  expiresAt: DateTime
+  id: ID!
+  newPlan: UserPlan!
+  oldPlan: UserPlan!
+  reason: String
+  userId: String!
 }
 
 input ProductAttributeInput {
@@ -352,16 +422,20 @@ type ProductImageModel {
 
 type ProductModel {
   attributes: [ProductAttributeModel!]
+  boostedUntil: DateTime
+  bumpedAt: DateTime!
   category: CategoryModel
   categoryId: String!
   city: String
   condition: String
+  contacts: Int!
   createdAt: DateTime!
   description: String
   discount: Int
   favoritesCount: Int!
   id: ID!
   images: [ProductImageModel!]
+  impressions: Int!
   jobDetail: JobDetailModel
   marketplaceDetail: MarketplaceDetailModel
   price: Float!
@@ -387,8 +461,9 @@ type PropertyDetailModel {
 }
 
 type Query {
+  adminActions(skip: Int, take: Int): [AdminActionModel!]!
   adminHomeSections: [HomeSectionModel!]!
-  allProducts(skip: Int, take: Int): [ProductModel!]!
+  allProducts(query: String, skip: Int, take: Int): [ProductModel!]!
   categories: [CategoryModel!]!
   category(id: String!): CategoryModel!
   categoryBySlug(slug: String!): CategoryModel!
@@ -407,8 +482,12 @@ type Query {
   isFollowing(userId: String!): Boolean!
   me: UserModel
   myFavorites: [FavoriteModel!]!
+  mySavedSearches: [SavedSearchModel!]!
   myVerificationRequest: VerificationModel
+  myViewsDaily(days: Int): [DailyCountModel!]!
   notifications: [NotificationModel!]!
+  payments(skip: Int, take: Int): [PaymentModel!]!
+  planHistory(userId: String!): [PlanChangeModel!]!
   previewFilterCount(filter: JSON!): Int!
   product(id: String!): ProductModel!
   products(skip: Int, take: Int): [ProductModel!]!
@@ -420,13 +499,14 @@ type Query {
   reviewsBySeller(sellerId: String!): [ReviewModel!]!
   rol(id: String!): RolModel!
   roles: [RolModel!]!
+  savedSearchStats(limit: Int): [SearchTermStatModel!]!
   searchProducts(input: SearchProductsInput!): [ProductModel!]!
   sectionProducts(sectionId: String!, skip: Int, take: Int): [ProductModel!]!
   sellerRating(sellerId: String!): SellerRating!
   topRatedSellers(limit: Int! = 6): [TopRatedSeller!]!
   unreadNotificationsCount: Int!
   user(id: String!): UserModel!
-  users: [UserModel!]!
+  users(query: String, skip: Int, take: Int): [UserModel!]!
   verificationRequests: [VerificationModel!]!
 }
 
@@ -503,6 +583,17 @@ type RolModel {
   updatedAt: DateTime
 }
 
+type SavedSearchModel {
+  categoryId: String
+  city: String
+  createdAt: DateTime!
+  id: ID!
+  priceMax: Float
+  priceMin: Float
+  query: String
+  userId: String!
+}
+
 input SearchProductsInput {
   categoryId: String
   city: String
@@ -513,6 +604,11 @@ input SearchProductsInput {
   skip: Int = 0
   sortBy: String = "recent"
   take: Int = 20
+}
+
+type SearchTermStatModel {
+  count: Float!
+  term: String!
 }
 
 type SellerRating {
@@ -618,22 +714,36 @@ type UserModel {
   bio: String
   coverUrl: String
   createdAt: DateTime!
+  effectivePlan: UserPlan
   email: String!
   id: ID!
   language: String!
   location: String
+  maxActiveProducts: Int
+  maxImagesPerProduct: Int
   name: String!
   notifMarketing: Boolean!
   notifMessages: Boolean!
   notifOffers: Boolean!
   permission: PermissionAcces!
   phone: String
+  plan: UserPlan!
+  planExpiresAt: DateTime
   rolId: String
   showEmail: Boolean!
   showPhone: Boolean!
+  suspended: Boolean!
+  suspendedReason: String
   themePreference: String!
   updatedAt: DateTime!
   verified: Boolean!
+}
+
+"""Plan de suscripción del usuario."""
+enum UserPlan {
+  FREE
+  PREMIUM
+  STAR
 }
 
 type VehicleDetailModel {

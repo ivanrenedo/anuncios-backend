@@ -1,10 +1,12 @@
-import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserModel } from './dto/user.model';
 import { UpdateUserInput } from './dto/update-user.input';
 import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
+import { ChangePlanInput } from './dto/change-plan.input';
+import { PlanChangeModel } from './dto/plan-change.model';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { ActionsGuard, RequireActions } from '../auth/guards/actions.guard';
@@ -16,8 +18,12 @@ export class UsersResolver {
 
   @Query(() => [UserModel])
   @UseGuards(AdminGuard)
-  async users() {
-    return this.usersService.findAll();
+  async users(
+    @Args('take', { type: () => Int, nullable: true }) take?: number,
+    @Args('skip', { type: () => Int, nullable: true }) skip?: number,
+    @Args('query', { nullable: true }) query?: string,
+  ) {
+    return this.usersService.findAll(take ?? 500, skip ?? 0, query);
   }
 
   @Query(() => UserModel)
@@ -62,5 +68,42 @@ export class UsersResolver {
   @UseGuards(GqlAuthGuard)
   async deleteMyAccount(@GetCurrentUserId() userId: string) {
     return this.usersService.remove(userId);
+  }
+
+  @Mutation(() => UserModel)
+  @UseGuards(AdminGuard, ActionsGuard)
+  @RequireActions('update')
+  async suspendUser(
+    @GetCurrentUserId() adminId: string,
+    @Args('id') id: string,
+    @Args('reason', { nullable: true }) reason?: string,
+  ) {
+    return this.usersService.suspendUser(id, reason, adminId);
+  }
+
+  @Mutation(() => UserModel)
+  @UseGuards(AdminGuard, ActionsGuard)
+  @RequireActions('update')
+  async unsuspendUser(
+    @GetCurrentUserId() adminId: string,
+    @Args('id') id: string,
+  ) {
+    return this.usersService.unsuspendUser(id, adminId);
+  }
+
+  @Mutation(() => UserModel)
+  @UseGuards(AdminGuard, ActionsGuard)
+  @RequireActions('update')
+  async changePlan(
+    @GetCurrentUserId() adminId: string,
+    @Args('input') input: ChangePlanInput,
+  ) {
+    return this.usersService.changePlan(adminId, input);
+  }
+
+  @Query(() => [PlanChangeModel])
+  @UseGuards(AdminGuard)
+  async planHistory(@Args('userId') userId: string) {
+    return this.usersService.planHistory(userId);
   }
 }

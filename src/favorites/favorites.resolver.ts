@@ -1,4 +1,11 @@
-import { Resolver, Query, Mutation, Args, ObjectType, Field } from '@nestjs/graphql';
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  ObjectType,
+  Field,
+} from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { FavoritesService } from './favorites.service';
 import { FavoriteModel } from './dto/favorite.model';

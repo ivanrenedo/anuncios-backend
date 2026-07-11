@@ -10,6 +10,16 @@ import {
 } from './detail.models';
 
 @ObjectType()
+export class DailyCountModel {
+  /** Day in YYYY-MM-DD (UTC). */
+  @Field()
+  date: string;
+
+  @Field(() => Int)
+  count: number;
+}
+
+@ObjectType()
 export class ProductImageModel {
   @Field(() => ID)
   id: string;
@@ -70,6 +80,20 @@ export class ProductModel {
 
   @Field(() => Int)
   favoritesCount: number;
+
+  /** Times a buyer tapped the WhatsApp/call contact button. */
+  @Field(() => Int)
+  contacts: number;
+
+  /** Times the listing appeared in search results. */
+  @Field(() => Int)
+  impressions: number;
+
+  @Field()
+  bumpedAt: Date;
+
+  @Field({ nullable: true })
+  boostedUntil?: Date;
 
   @Field()
   createdAt: Date;

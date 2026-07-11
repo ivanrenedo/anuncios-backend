@@ -22,4 +22,12 @@ export class BroadcastInput {
 
   @Field({ nullable: true })
   filterCat?: string;
+
+  /** Segment: only users on this plan (FREE | STAR | PREMIUM). Omit = all. */
+  @Field({ nullable: true })
+  plan?: string;
+
+  /** Segment: only users whose location contains this city. Omit = all. */
+  @Field({ nullable: true })
+  city?: string;
 }

@@ -14,6 +14,7 @@ const ALLOWED_SORT_FIELDS = [
   'views',
   'favoritesCount',
   'createdAt',
+  'bumpedAt',
   'price',
   'discount',
 ];
@@ -60,7 +61,7 @@ export function buildProductQuery(
   const sortField =
     filter.sortBy && ALLOWED_SORT_FIELDS.includes(filter.sortBy)
       ? filter.sortBy
-      : 'createdAt';
+      : 'bumpedAt';
   const sortOrder = filter.order === 'asc' ? 'asc' : 'desc';
 
   const query: Prisma.ProductFindManyArgs = {
@@ -69,7 +70,14 @@ export function buildProductQuery(
     include: {
       images: { take: 1, orderBy: { sortOrder: 'asc' } },
       seller: {
-        select: { id: true, name: true, avatarUrl: true, verified: true },
+        select: {
+          id: true,
+          name: true,
+          avatarUrl: true,
+          verified: true,
+          plan: true,
+          planExpiresAt: true,
+        },
       },
       category: { select: { id: true, label: true, slug: true } },
       propertyDetail: true,

@@ -1,4 +1,13 @@
-import { Resolver, Query, Mutation, Args, ObjectType, Field, Float, Int } from '@nestjs/graphql';
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  ObjectType,
+  Field,
+  Float,
+  Int,
+} from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 import { ReviewModel } from './dto/review.model';
@@ -108,7 +117,10 @@ export class ReviewsResolver {
 
   @Mutation(() => ReviewModel)
   @UseGuards(GqlAuthGuard)
-  async deleteReview(@GetCurrentUserId() userId: string, @Args('id') id: string) {
+  async deleteReview(
+    @GetCurrentUserId() userId: string,
+    @Args('id') id: string,
+  ) {
     return this.service.remove(id, userId);
   }
 }

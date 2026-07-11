@@ -1,5 +1,6 @@
-import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { PermissionAcces } from './permission.enum';
+import { UserPlan } from './user-plan.enum';
 
 @ObjectType()
 export class UserModel {
@@ -38,6 +39,29 @@ export class UserModel {
 
   @Field(() => PermissionAcces)
   permission: PermissionAcces;
+
+  @Field(() => UserPlan)
+  plan: UserPlan;
+
+  @Field({ nullable: true })
+  planExpiresAt?: Date;
+
+  /** Plan actually in force (paid plans downgrade to FREE once expired). */
+  @Field(() => UserPlan, { nullable: true })
+  effectivePlan?: UserPlan;
+
+  /** Max active listings for the effective plan. Null = unlimited. */
+  @Field(() => Int, { nullable: true })
+  maxActiveProducts?: number;
+
+  @Field(() => Int, { nullable: true })
+  maxImagesPerProduct?: number;
+
+  @Field()
+  suspended: boolean;
+
+  @Field({ nullable: true })
+  suspendedReason?: string;
 
   @Field()
   notifMessages: boolean;

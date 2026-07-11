@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { GqlThrottlerGuard } from './common/gql-throttler.guard';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
@@ -22,11 +26,19 @@ import { UploadModule } from './upload/upload.module';
 import { OtpModule } from './otp/otp.module';
 import { HomeSectionsModule } from './home-sections/home-sections.module';
 import { VerificationsModule } from './verifications/verifications.module';
+import { SavedSearchesModule } from './saved-searches/saved-searches.module';
+import { PaymentsModule } from './payments/payments.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     EventEmitterModule.forRoot({ wildcard: true }),
+
+    // Per-IP rate limit: generous enough for normal browsing (a screen fires
+    // a handful of queries) but stops scripts inflating views/contacts stats.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
 
     // BullMQ/Redis connection shared by the notifications delivery queue.
     BullModule.forRootAsync({
@@ -54,6 +66,19 @@ import { VerificationsModule } from './verifications/verifications.module';
         autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
         sortSchema: true,
         playground: true,
+        // Normalize auth-related errors: any UNAUTHENTICATED error goes out
+        // with a neutral message and a stable code. Clients ignore these by
+        // code instead of parsing fragile message strings.
+        formatError: (formattedError: any) => {
+          const code = formattedError?.extensions?.code;
+          if (code === 'UNAUTHENTICATED') {
+            return {
+              message: 'NO_SESSION',
+              extensions: { code: 'UNAUTHENTICATED' },
+            };
+          }
+          return formattedError;
+        },
         subscriptions: {
           'graphql-ws': true,
         },
@@ -108,6 +133,10 @@ import { VerificationsModule } from './verifications/verifications.module';
     OtpModule,
     HomeSectionsModule,
     VerificationsModule,
+    SavedSearchesModule,
+    PaymentsModule,
+    AuditModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: GqlThrottlerGuard }],
 })
 export class AppModule {}

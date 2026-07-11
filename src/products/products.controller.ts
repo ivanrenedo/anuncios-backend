@@ -25,10 +25,9 @@ export class ProductsController {
     const description = product.description
       ? product.description.slice(0, 200)
       : title;
-    const image =
-      product.images?.[0]?.url?.startsWith('/')
-        ? `${baseUrl}${product.images[0].url}`
-        : product.images?.[0]?.url || '';
+    const image = product.images?.[0]?.url?.startsWith('/')
+      ? `${baseUrl}${product.images[0].url}`
+      : product.images?.[0]?.url || '';
     const url = `${baseUrl}/p/${id}`;
     const deepLink = `marketeg://product/${id}`;
 

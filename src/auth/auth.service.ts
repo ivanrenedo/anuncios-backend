@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
+import { PLAN_LIMITS, activePlan } from '../common/plan-limits';
 
 interface GooglePayload {
   googleId: string;
@@ -108,7 +109,23 @@ export class AuthService {
     return { user, ...tokens };
   }
 
+  async logout(userId: string) {
+    await this.prisma.pushToken.deleteMany({ where: { userId } });
+    return true;
+  }
+
   async getMe(userId: string) {
-    return this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return null;
+    const effective = activePlan(user);
+    const limits = PLAN_LIMITS[effective];
+    return {
+      ...user,
+      effectivePlan: effective,
+      maxActiveProducts: Number.isFinite(limits.maxActiveProducts)
+        ? limits.maxActiveProducts
+        : null,
+      maxImagesPerProduct: limits.maxImagesPerProduct,
+    };
   }
 }

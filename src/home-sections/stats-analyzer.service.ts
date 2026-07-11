@@ -26,7 +26,12 @@ export class StatsAnalyzerService {
         this.detectHotCategories(),
       ]);
 
-    candidates.push(...trending, ...topFavorited, ...discountOps, ...hotCategories);
+    candidates.push(
+      ...trending,
+      ...topFavorited,
+      ...discountOps,
+      ...hotCategories,
+    );
 
     const existing = await this.prisma.homeSuggestion.findMany({
       where: { status: 'pending' },
@@ -75,12 +80,22 @@ export class StatsAnalyzerService {
     const productIds = views.map((v) => v.productId);
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds }, status: 'active' },
-      select: { categoryId: true, category: { select: { label: true, slug: true } } },
+      select: {
+        categoryId: true,
+        category: { select: { label: true, slug: true } },
+      },
     });
 
-    const catCounts = new Map<string, { count: number; label: string; slug: string }>();
+    const catCounts = new Map<
+      string,
+      { count: number; label: string; slug: string }
+    >();
     for (const p of products) {
-      const cur = catCounts.get(p.categoryId) || { count: 0, label: p.category.label, slug: p.category.slug };
+      const cur = catCounts.get(p.categoryId) || {
+        count: 0,
+        label: p.category.label,
+        slug: p.category.slug,
+      };
       cur.count++;
       catCounts.set(p.categoryId, cur);
     }

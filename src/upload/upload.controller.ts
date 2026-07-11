@@ -51,7 +51,8 @@ export class UploadController {
     }),
   )
   uploadImages(@UploadedFiles() files: Express.Multer.File[]) {
-    if (!files?.length) throw new BadRequestException('No se subieron archivos');
+    if (!files?.length)
+      throw new BadRequestException('No se subieron archivos');
     return { urls: files.map((f) => `/uploads/${f.filename}`) };
   }
 }
