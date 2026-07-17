@@ -2,7 +2,6 @@ import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { VerificationsService } from './verifications.service';
 import { VerificationModel } from './dto/verification.model';
-import { VerificationStatus } from './dto/verification.enums';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { GetCurrentUserId } from '../auth/decorators/current-user.decorator';

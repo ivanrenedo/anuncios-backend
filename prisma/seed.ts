@@ -1,7 +1,8 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { Action, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { DEFAULT_PIN, hashPin } from '../src/common/pin.util';
 
 // Mirror PrismaService: the `pg` driver ignores `?schema=`, so apply the schema
 // as the session search_path and tell the adapter about it explicitly.
@@ -63,209 +64,109 @@ const CATALOG: {
   children: string[];
 }[] = [
   {
-    slug: 'moda',
-    label: 'Moda y Vestidos',
-    color: '#006b5e',
+    slug: 'moda_complementos',
+    label: 'Moda y Complementos',
+    color: '#1877F2',
     icon: 'shirt',
     children: [
-      'Ropa Mujer',
-      'Ropa hombre',
-      'Ropa niños',
-      'Calzados',
-      'Bolsos y Accesorios',
-      'Joyas y relojes',
-      'Otros accesorios de moda',
+      'Mujer',
+      'Hombre',
+      'Niños',
+      'Calzado',
+      'Bolsos y Mochilas',
+      'Joyería',
+      'Relojes',
+      'Gafas',
+      'Cinturones y Accesorios',
+      'Ropa de Boda',
+      'Ropa Deportiva',
+      'Ropa Premamá',
+      'Disfraces',
+      'Vintage',
     ],
   },
   {
-    slug: 'hogar-jardin',
-    label: 'Hogar y Jardín',
-    color: '#038c51',
+    slug: 'electronica_foto',
+    label: 'Electrónica y Foto',
+    color: '#2337ba',
+    icon: 'smartphone',
+    children: [
+      'Móviles',
+      'Accesorios Móvil',
+      'TV',
+      'Proyectores',
+      'Audio y Altavoces',
+      'Auriculares',
+      'Cámaras',
+      'Objetivos y Accesorios Foto',
+      'Drones',
+      'Wearables y Smartwatches',
+      'Cables y Cargadores',
+      'Baterías Externas',
+    ],
+  },
+  {
+    slug: 'informatica_gaming',
+    label: 'Informática y Gaming',
+    color: '#1538e8',
+    icon: 'laptop',
+    children: [
+      'Portátiles',
+      'PC Sobremesa',
+      'Tablets',
+      'Monitores',
+      'Teclados y Ratones',
+      'Componentes',
+      'Almacenamiento Externo',
+      'Redes y Wifi',
+      'Impresoras y Escáneres',
+      'Software',
+      'Consolas',
+      'Videojuegos',
+      'Mandos y Accesorios Gaming',
+    ],
+  },
+  {
+    slug: 'hogar_jardin_bricolaje',
+    label: 'Hogar, Jardín y Bricolaje',
+    color: '#53ec60',
     icon: 'house',
     children: [
-      'Grandes electrodomésticos',
-      'Pequeños electrodomésticos',
-      'Accesorio de habitación',
-      'Accesorios de baños',
-      'Comodidades de la casa',
-      'Platos y Utensilios',
-      'Muebles y Organización',
-      'Cocina',
-      'Decoradores y espejos',
+      'Muebles Salón',
+      'Muebles Dormitorio',
+      'Muebles Cocina',
+      'Muebles Baño',
+      'Decoración',
       'Iluminación',
-      'Textiles',
-      'Alfombra',
-      'Puertas y Ventanas',
-      'Jardín y exteriores',
-      'Calefacción y climatización',
-      'Bricolaje',
-      'Sanitario',
-      'Otros(Casa y Jardín)',
-    ],
-  },
-  {
-    slug: 'tech',
-    label: 'Informatica, multimedia y dispositivos',
-    color: '#0058bc',
-    icon: 'cpu',
-    children: [
-      'Smartphone y Teléfonos',
-      'Tabletas y E-book',
-      'Ordenadores Portatiles',
-      'Ordenadores de escritorio',
-      'Gaming',
-      'Dispositivos',
-      'Impresoras',
-      'Televisores',
-      'Proyectores',
-      'Foto y vídeo',
-      'Audio y Hi-Fi',
-      'Accesorios informáticos',
-      'Otros materiales de electrónica',
-    ],
-  },
-  {
-    slug: 'articulo-bebes-niños',
-    label: 'Articulos para bebés y niños',
-    color: '#4278f5',
-    icon: 'baby',
-    children: [
-      'Accesorios de Baño',
-      'Alimentación',
-      'Artículos de materinidad',
-      'Artículos escolares',
-      'Transporte de bebés y niños',
-      'Tronas y andadores',
-      'Mobiliario infantil',
-      'Ropa infantil',
-      'Seguridad y cuidado',
-      'Cunas y camas',
-      'Accesorios de comida',
-      'Juguetes y Juegos',
-      'Otros articulos de bebés y niños',
-    ],
-  },
-  {
-    slug: 'animales',
-    label: 'Animales',
-    color: '#8c5103',
-    icon: 'dog',
-    children: [
-      'Animales domésticos',
-      'Animales de campo',
-      'Servicios de animales',
-      'Alimentación de animales',
-      'Otros animales',
-    ],
-  },
-  {
-    slug: 'instrumentos-musica',
-    label: 'Instrumentos de Música',
-    color: '#3d3287',
-    icon: 'guitar',
-    children: [
-      'De cuerdas',
-      'Teclado',
-      'Viento',
-      'Percusión',
-      'Electrónicos',
-      'Otros instrumentos musicales',
-    ],
-  },
-  {
-    slug: 'ocio-entretenimiento',
-    label: 'Ocio y Entretenimineto',
-    color: '#e3812b',
-    icon: 'book',
-    children: [
-      'Arte y colecciones',
-      'Películas y libros',
-      'Físicas y Deportivas',
-      'Artísticas y Culturales',
-      'Lúdicas',
-      'Viajes y billetes',
-      'Otros ocio y entretenimiento',
-    ],
-  },
-  {
-    slug: 'bienestar-deporte',
-    label: 'Bienestar y Deporte',
-    color: '#e80505',
-    icon: 'sport-shoe',
-    children: [
-      'Gimnasios y Fitness',
-      'Actividades al Aire Libre',
-      'Productos de tierra',
-      'Articulos deportivos',
-      'Suplementos alimenticios',
-      'Alimentación en general',
-      'Otros bienestar y deporte',
-    ],
-  },
-  {
-    slug: 'material-profesional',
-    label: 'Materiales Profesionales',
-    color: '#82157d',
-    icon: 'sport-shoe',
-    children: [
-      'Material de Oficina',
-      'Restauracion y Hostelería',
-      'Material de Construcción y Reformas',
-      'Balcones',
-      'Electricidad e Iluminación',
-      'Escaleras y andamios',
+      'Textil Hogar',
+      'Cocina y Menaje',
+      'Jardín y Exterior',
+      'Barbacoas',
+      'Plantas y Semillas',
+      'Herramientas Manuales',
+      'Herramientas Eléctricas',
+      'Materiales de Construcción',
+      'Fontanería',
       'Ferretería',
-      'Herramientas y máquinas',
-      'Madera',
-      'Pavimentos y revestimiento',
-      'Pinturas y barnices',
-      'Puertas y ventanas',
-      'Material de Servicios Informáticos',
-      'Material Médico',
-      'Material Agrícola',
-      'Material de Escuela, Guardería y Juegos',
-      'Otros materiales profesionales',
+      'Mascotas',
     ],
   },
   {
-    slug: 'stock-ventas',
-    label: 'Stock y Ventas',
-    color: '#c48d52',
-    icon: 'circle-pile',
-    children: ['Stock', 'Ventas'],
-  },
-  {
-    slug: 'industria',
-    label: 'Industria',
-    color: '#c48d52',
-    icon: 'forklift',
-    children: ['Industria', 'Agricultura', 'Ganadería', 'Pesca'],
-  },
-  {
-    slug: 'erotica',
-    label: 'Erótica',
-    color: '#c90202',
-    icon: 'mars',
+    slug: 'electrodomesticos',
+    label: 'Electrodomésticos',
+    color: '#6e84f5',
+    icon: 'refrigerator',
     children: [
-      'Sexy Lencerias',
-      'Juguetes',
-      'Lubricantes',
-      'Condones',
-      'Dispositivos de vibración',
-      'Dispositivos de presión y succión',
-      'Dildos y artículos de inserción',
-      'Accesorios de bienestar pélvico',
-      'Productos para la salud sexual',
-      'Artículos de uso anal',
-      'Esposas y ataduras',
-      'Pinzas para pezones',
-      'Azotadores',
-      'Columpios sexuales',
-      'Otros(Erótica)',
+      'Grandes Electrodomésticos',
+      'Pequeños Electrodomésticos',
+      'Aire Acondicionado',
+      'Calefacción',
+      'Aspiradoras y Limpieza',
+      'Cocina Eléctrica',
     ],
   },
   {
-    slug: 'Vehículos',
+    slug: 'vehiculos',
     label: 'Vehículos',
     color: '#8c5000',
     icon: 'car',
@@ -273,69 +174,140 @@ const CATALOG: {
       'Coches',
       'Motos',
       'Bicicletas',
-      'Camiones',
-      'Barcos',
-      'Motor y accesorios',
-      'Otros vehículos',
+      'Bicis Eléctricas y Patinetes',
+      'Caravanas y Autocaravanas',
+      'Náutica',
+      'Camiones y Furgonetas',
+      'Recambios Coche',
+      'Recambios Moto',
+      'Neumáticos y Llantas',
+      'Audio y Navegación',
+      'Accesorios y Tuning',
+      'Herramientas de Taller',
     ],
   },
   {
     slug: 'inmobiliaria',
     label: 'Inmobiliaria',
     color: '#13979e',
-    icon: 'home',
+    icon: 'building2',
     children: [
-      'Apartamentos',
-      'Casas',
-      'Villas',
-      'Piso',
-      'Garaje',
-      'Trastero',
-      'Habitación',
-      'Oficinas y escenarios',
-      'Tiendas, Comercio y locales',
-      'Terrenos y fincas',
-      'Otras inmobiliarias',
+      'Pisos',
+      'Casas y Chalets',
+      'Habitaciones',
+      'Garajes y Trasteros',
+      'Locales y Oficinas',
+      'Naves Industriales',
+      'Terrenos y Fincas',
+      'Alquiler Vacacional',
+    ],
+  },
+  {
+    slug: 'deporte_aire_libre',
+    label: 'Deporte y Aire Libre',
+    color: '#2625a0',
+    icon: 'dumbbell',
+    children: [
+      'Fitness y Gimnasio',
+      'Ciclismo',
+      'Running',
+      'Camping y Senderismo',
+      'Deportes de Equipo',
+      'Náutica y Agua',
+      'Nieve e Invierno',
+      'Caza y Pesca',
+      'Golf',
+      'Tenis y Pádel',
+      'Boxeo y Artes Marciales',
+    ],
+  },
+  {
+    slug: 'ninos_bebes',
+    label: 'Niños y Bebés',
+    color: '#e81558',
+    icon: 'baby',
+    children: [
+      'Ropa Bebé y Niño',
+      'Calzado Infantil',
+      'Juguetes Bebé',
+      'Juguetes Niño',
+      'Cochecitos y Sillas de Coche',
+      'Tronas y Cunas',
+      'Alimentación Bebé',
+      'Habitación Infantil',
+      'Educativo y Libros Infantiles',
+    ],
+  },
+  {
+    slug: 'belleza_salud',
+    label: 'Belleza y Salud',
+    color: '#44aa20',
+    icon: 'sparkles',
+    children: [
+      'Maquillaje',
+      'Cuidado Facial',
+      'Cuidado Corporal',
+      'Cabello',
+      'Perfumes',
+      'Uñas',
+      'Higiene Personal',
+      'Afeitado y Depilación',
+      'Suplementos y Nutrición',
+      'Ortopedia y Movilidad',
+      'Erótica y Bienestar Sexual',
+    ],
+  },
+  {
+    slug: 'ocio_libros_coleccionismo',
+    label: 'Ocio, Libros y Coleccionismo',
+    color: '#a037a0',
+    icon: 'bookOpen',
+    children: [
+      'Libros',
+      'Cómics y Manga',
+      'Revistas',
+      'Música CDs y Vinilos',
+      'Películas y Series',
+      'Instrumentos Musicales',
+      'Juegos de Mesa y Puzzles',
+      'Modelismo y Maquetas',
+      'Coleccionismo',
+      'Antigüedades y Arte',
+      'Juguetes de Colección',
+      'Manualidades y Hobbies',
     ],
   },
   {
     slug: 'servicios',
     label: 'Servicios',
     color: '#0058bc',
-    icon: 'handshake',
+    icon: 'wrench',
     children: [
+      'Reparaciones y Bricolaje',
       'Limpieza',
-      'Servicio de seguridad',
-      'Restauracion, Bricolaje y trabajos de casa y jardín',
-      'Cocina, camarero y Barman',
-      'Transporte y Mudanzas',
-      'Estetica y Barbero',
-      'Servicios informaticos y reparación',
-      'Salud',
-      'Servicios de Administracion, finanzas y Jurídicos',
-      'Cursos de formación',
-      'Alquiler de salas de formación',
-      'Eventos',
-      'Negocios y gestiones comerciales',
-      'Belleza',
-      'Clases particulares',
-      'Tecnología',
-      'Otros servicios',
+      'Mudanzas y Transporte',
+      'Informática y Soporte Técnico',
+      'Belleza y Peluquería',
+      'Clases Particulares',
+      'Eventos y Catering',
+      'Diseño y Creatividad',
+      'Salud y Bienestar',
+      'Legal y Administración',
+      'Otros Servicios',
     ],
   },
   {
     slug: 'empleo',
-    label: 'empleo',
+    label: 'Empleo',
     color: '#136b9e',
     icon: 'briefcase-business',
-    children: ['Oferta de empleo', 'Busco empleo', 'Practicas'],
-  },
-  {
-    slug: 'otro',
-    label: 'Otros',
-    color: '#6b003e',
-    icon: 'badge-question-mark',
-    children: [],
+    children: [
+      'Oferta de Empleo',
+      'Busco Empleo',
+      'Prácticas',
+      'Freelance',
+      'Trabajo Temporal',
+    ],
   },
 ];
 
@@ -348,7 +320,7 @@ const SELLERS: {
   name: string;
   location: string;
   verified: boolean;
-  avatar: string;
+  avatar?: string;
 }[] = [
   {
     email: 'maria@demo.market',
@@ -368,8 +340,14 @@ const SELLERS: {
     email: 'antonio@demo.market',
     name: 'Antonio M.',
     location: 'Ebibeyin',
-    verified: true,
+    verified: false,
     avatar: px('220453', 160),
+  },
+  {
+    email: 'digitalcorps365@gmail.com',
+    name: 'Benjamin Buika Renedo',
+    location: 'Malabo',
+    verified: true,
   },
 ];
 
@@ -397,7 +375,7 @@ const PRODUCTS: {
   },
   {
     seller: 'maria@demo.market',
-    categorySlug: 'ordenadores',
+    categorySlug: 'portatiles',
     title: 'MacBook Air M2 13"',
     price: 850000,
     discount: 10,
@@ -408,7 +386,7 @@ const PRODUCTS: {
   },
   {
     seller: 'antonio@demo.market',
-    categorySlug: 'audio',
+    categorySlug: 'auriculares',
     title: 'Sony WH-1000XM5',
     price: 180000,
     condition: 'Nuevo',
@@ -428,7 +406,7 @@ const PRODUCTS: {
   },
   {
     seller: 'antonio@demo.market',
-    categorySlug: 'sedan',
+    categorySlug: 'coches',
     title: 'Toyota Corolla 2018',
     price: 8500000,
     condition: 'Buen estado',
@@ -438,7 +416,7 @@ const PRODUCTS: {
   },
   {
     seller: 'carlos@demo.market',
-    categorySlug: 'pickup',
+    categorySlug: 'coches',
     title: 'Toyota Hilux 4x4',
     price: 15200000,
     condition: 'Como nuevo',
@@ -468,7 +446,7 @@ const PRODUCTS: {
   },
   {
     seller: 'maria@demo.market',
-    categorySlug: 'ropa-mujer',
+    categorySlug: 'mujer',
     title: 'Chaqueta de cuero vintage',
     price: 45000,
     condition: 'Como nuevo',
@@ -478,7 +456,7 @@ const PRODUCTS: {
   },
   {
     seller: 'carlos@demo.market',
-    categorySlug: 'accesorios',
+    categorySlug: 'relojes',
     title: 'Reloj minimalista clásico',
     price: 52000,
     condition: 'Buen estado',
@@ -488,7 +466,7 @@ const PRODUCTS: {
   },
   {
     seller: 'maria@demo.market',
-    categorySlug: 'muebles',
+    categorySlug: 'muebles-salon',
     title: 'Sofá de 3 plazas moderno',
     price: 420000,
     discount: 15,
@@ -499,7 +477,7 @@ const PRODUCTS: {
   },
   {
     seller: 'antonio@demo.market',
-    categorySlug: 'electrodomesticos',
+    categorySlug: 'grandes-electrodomesticos',
     title: 'Refrigerador LG 400L',
     price: 380000,
     condition: 'Nuevo',
@@ -535,6 +513,7 @@ async function seedCategories(): Promise<Map<string, string>> {
     for (let j = 0; j < c.children.length; j++) {
       const name = c.children[j];
       const slug = slugify(name);
+
       const child = await prisma.category.upsert({
         where: { slug },
         update: { label: name, parentId: parent.id, sortOrder: j },
@@ -556,6 +535,7 @@ async function seedSellers(): Promise<Map<string, string>> {
         location: s.location,
         verified: s.verified,
         avatarUrl: s.avatar,
+        rol: { connect: { label: 'USER' } },
       },
       create: {
         name: s.name,
@@ -567,6 +547,7 @@ async function seedSellers(): Promise<Map<string, string>> {
     });
     idByEmail.set(s.email, user.id);
   }
+
   return idByEmail;
 }
 
@@ -601,11 +582,32 @@ async function seedProducts(
 
 async function seedRoles() {
   // Default role new users are assigned to.
-  await prisma.rol.upsert({
-    where: { label: 'USER' },
-    update: {},
-    create: { label: 'USER', description: 'Rol por defecto', actions: [] },
-  });
+  const roles: {
+    label: string;
+    description: string;
+    actions: Action[];
+  }[] = [
+    {
+      label: 'USER',
+      description: 'Rol por defecto',
+      actions: [],
+    },
+    {
+      label: 'SUPER_ADMIN',
+      description: 'Rol super admin',
+      actions: ['create', 'read', 'update', 'delete'],
+    },
+  ];
+
+  const upsertPromises = roles.map((item) =>
+    prisma.rol.upsert({
+      where: { label: item.label },
+      update: { ...item },
+      create: { ...item },
+    }),
+  );
+
+  await prisma.$transaction(upsertPromises);
 }
 
 async function main() {
@@ -620,6 +622,14 @@ async function main() {
     prisma.product.count(),
     prisma.rol.count(),
   ]);
+
+  await prisma.user.update({
+    where: { email: 'digitalcorps365@gmail.com' },
+    data: {
+      rol: { connect: { label: 'SUPER_ADMIN' } },
+      pin: hashPin(DEFAULT_PIN),
+    },
+  });
   console.log(
     `Seed done. categories:${categories} users:${users} products:${products} roles:${roles}`,
   );

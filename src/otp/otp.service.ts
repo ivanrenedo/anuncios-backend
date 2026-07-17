@@ -34,7 +34,7 @@ export class OtpService {
     });
     if (recentCount >= 1) {
       throw new HttpException(
-        'Debes esperar antes de solicitar otro código',
+        'Debes esperar 1 minuto antes de solicitar otro código',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
@@ -22,8 +22,6 @@ import {
  */
 @Injectable()
 export class NotificationsListener {
-  private readonly logger = new Logger(NotificationsListener.name);
-
   constructor(
     private notifications: NotificationsService,
     private prisma: PrismaService,

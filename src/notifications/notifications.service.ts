@@ -1,6 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Notification, NotificationType, User } from '@prisma/client';
+import { NotificationType, User } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { PUB_SUB, NOTIFICATION_CREATED } from './providers/pubsub.provider';
@@ -29,8 +29,6 @@ const VALID_TYPES = new Set<string>(Object.values(NotificationType));
 
 @Injectable()
 export class NotificationsService {
-  private readonly logger = new Logger(NotificationsService.name);
-
   constructor(
     private prisma: PrismaService,
     @Inject(PUB_SUB) private pubSub: PubSub,

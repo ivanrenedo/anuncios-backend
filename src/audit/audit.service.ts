@@ -14,7 +14,7 @@ export class AuditService {
   log(
     adminId: string | null | undefined,
     action: string,
-    targetType: 'product' | 'user' | 'payment',
+    targetType: 'product' | 'user' | 'payment' | 'system',
     targetId: string,
     detail?: string,
   ) {
@@ -38,5 +38,13 @@ export class AuditService {
       take,
       skip,
     });
+  }
+
+  async deleteMany(ids: string[]) {
+    if (!ids.length) return 0;
+    const result = await this.prisma.adminAction.deleteMany({
+      where: { id: { in: ids } },
+    });
+    return result.count;
   }
 }

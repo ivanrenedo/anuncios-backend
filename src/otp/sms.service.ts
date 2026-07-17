@@ -8,7 +8,7 @@ export class SmsService {
   private from: string;
   private readonly logger = new Logger(SmsService.name);
 
-  constructor(private config: ConfigService) {
+  constructor(config: ConfigService) {
     const sid = config.get<string>('TWILIO_ACCOUNT_SID');
     const token = config.get<string>('TWILIO_AUTH_TOKEN');
     this.from = config.get<string>('TWILIO_PHONE_NUMBER') || '';

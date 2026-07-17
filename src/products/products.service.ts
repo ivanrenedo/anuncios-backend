@@ -16,6 +16,7 @@ import { NotificationEvents } from '../notifications/notifications.events';
 import { PLAN_LIMITS, BOOST_PRICE, activePlan } from '../common/plan-limits';
 import { UserPlan } from '../users/dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../upload/storage.service';
 
 const FULL_INCLUDE = {
   seller: true,
@@ -49,6 +50,7 @@ export class ProductsService {
     private prisma: PrismaService,
     private events: EventEmitter2,
     private audit: AuditService,
+    private storage: StorageService,
   ) {}
 
   async findAll(take = 20, skip = 0) {
@@ -115,13 +117,17 @@ export class ProductsService {
       if (input.priceMax) where.price.lte = input.priceMax;
     }
 
-    let orderBy: Prisma.ProductOrderByWithRelationInput;
+    const isPriceSort =
+      input.sortBy === 'price_asc' || input.sortBy === 'price_desc';
+    let orderBy:
+      | Prisma.ProductOrderByWithRelationInput
+      | Prisma.ProductOrderByWithRelationInput[];
     switch (input.sortBy) {
       case 'price_asc':
-        orderBy = { price: 'asc' };
+        orderBy = [{ price: 'asc' }, { id: 'asc' }];
         break;
       case 'price_desc':
-        orderBy = { price: 'desc' };
+        orderBy = [{ price: 'desc' }, { id: 'asc' }];
         break;
       default:
         orderBy = { bumpedAt: 'desc' };
@@ -160,6 +166,13 @@ export class ProductsService {
           const rank = new Map(extraIds.map((id, i) => [id, i]));
           extras.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
           products = [...products, ...extras].slice(0, take);
+          if (isPriceSort) {
+            products = [...products].sort((a, b) => {
+              const cmp = Number(a.price) - Number(b.price);
+              if (cmp !== 0) return input.sortBy === 'price_asc' ? cmp : -cmp;
+              return a.id.localeCompare(b.id);
+            });
+          }
         }
       } catch {
         // pg_trgm not installed (e.g. restricted managed DB) — exact results only.
@@ -177,7 +190,7 @@ export class ProductsService {
         .catch(() => {});
     }
 
-    return applyBoostSort(products);
+    return isPriceSort ? products : applyBoostSort(products);
   }
 
   async create(sellerId: string, input: CreateProductInput) {
@@ -299,7 +312,16 @@ export class ProductsService {
     const data: any = { ...rest };
     if (categoryId) data.category = { connect: { id: categoryId } };
 
+    let droppedImageUrls: string[] = [];
     if (imageUrls) {
+      const previous = await this.prisma.productImage.findMany({
+        where: { productId: id },
+        select: { url: true },
+      });
+      const kept = new Set(imageUrls);
+      droppedImageUrls = previous
+        .map((i) => i.url)
+        .filter((u) => !kept.has(u));
       await this.prisma.productImage.deleteMany({ where: { productId: id } });
       data.images = {
         create: imageUrls.map((url, i) => ({ url, sortOrder: i })),
@@ -334,6 +356,10 @@ export class ProductsService {
       include: FULL_INCLUDE,
     });
 
+    if (droppedImageUrls.length) {
+      await this.storage.deleteFiles(droppedImageUrls);
+    }
+
     // Notify watchers only on an effective price drop. Effective price is the
     // listed price discounted by `discount` (%), so a change to either field
     // can trigger it. Skipped entirely when the price didn't actually drop.
@@ -352,7 +378,10 @@ export class ProductsService {
   }
 
   async remove(id: string, sellerId: string) {
-    const product = await this.prisma.product.findUnique({ where: { id } });
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: { images: { select: { url: true } } },
+    });
     if (!product) throw new NotFoundException('Anuncio no encontrado');
     // Owner-only: only the product's seller may delete it.
     if (product.sellerId !== sellerId)
@@ -360,7 +389,9 @@ export class ProductsService {
         'No tienes permiso para eliminar este anuncio',
       );
 
-    return this.prisma.product.delete({ where: { id } });
+    const deleted = await this.prisma.product.delete({ where: { id } });
+    await this.storage.deleteFiles(product.images.map((i) => i.url));
+    return deleted;
   }
 
   async registerView(id: string, viewerKey?: string) {
@@ -475,6 +506,7 @@ export class ProductsService {
     if (!image) throw new NotFoundException('Imagen no encontrada');
 
     await this.prisma.productImage.delete({ where: { id: imageId } });
+    await this.storage.deleteFile(image.url);
     this.audit.log(adminId, 'delete_image', 'product', image.productId, image.url);
 
     return this.prisma.product.findUnique({

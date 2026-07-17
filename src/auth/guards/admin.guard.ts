@@ -9,11 +9,17 @@ import { GqlExecutionContext } from '@nestjs/graphql';
 /**
  * Requires a valid JWT *and* that the user has admin panel access
  * (`permission = GRANTED`). Protects admin-only operations.
+ *
+ * Works in both GraphQL and REST contexts: `getRequest` sniffs the
+ * execution type so the same guard can decorate resolvers or controllers.
  */
 @Injectable()
 export class AdminGuard extends AuthGuard('jwt') {
   getRequest(context: ExecutionContext) {
-    return GqlExecutionContext.create(context).getContext().req;
+    if (context.getType<'http' | 'graphql'>() === 'graphql') {
+      return GqlExecutionContext.create(context).getContext().req;
+    }
+    return context.switchToHttp().getRequest();
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

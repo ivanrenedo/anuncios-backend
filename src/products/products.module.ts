@@ -4,9 +4,10 @@ import { ProductsResolver } from './products.resolver';
 import { ProductsController } from './products.controller';
 import { ProductsCron } from './products.cron';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, UploadModule],
   controllers: [ProductsController],
   providers: [ProductsService, ProductsResolver, ProductsCron],
   exports: [ProductsService],

@@ -29,6 +29,7 @@ import { VerificationsModule } from './verifications/verifications.module';
 import { SavedSearchesModule } from './saved-searches/saved-searches.module';
 import { PaymentsModule } from './payments/payments.module';
 import { AuditModule } from './audit/audit.module';
+import { ExportModule } from './export/export.module';
 
 @Module({
   imports: [
@@ -61,8 +62,8 @@ import { AuditModule } from './audit/audit.module';
           }),
         }),
       ],
-      inject: [ConfigService, JwtService],
-      useFactory: (config: ConfigService, jwt: JwtService) => ({
+      inject: [JwtService],
+      useFactory: (jwt: JwtService) => ({
         autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
         sortSchema: true,
         playground: true,
@@ -136,6 +137,7 @@ import { AuditModule } from './audit/audit.module';
     SavedSearchesModule,
     PaymentsModule,
     AuditModule,
+    ExportModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: GqlThrottlerGuard }],
 })

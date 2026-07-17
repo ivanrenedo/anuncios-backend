@@ -1,7 +1,9 @@
-import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserModel } from './dto/user.model';
+import { UserPlan } from './dto/user-plan.enum';
+import { activePlan } from '../common/plan-limits';
 import { UpdateUserInput } from './dto/update-user.input';
 import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
@@ -10,11 +12,20 @@ import { PlanChangeModel } from './dto/plan-change.model';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { ActionsGuard, RequireActions } from '../auth/guards/actions.guard';
+import { SuperAdminGuard } from '../auth/guards/super-admin.guard';
 import { GetCurrentUserId } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => UserModel)
 export class UsersResolver {
   constructor(private usersService: UsersService) {}
+
+  @ResolveField(() => UserPlan, { nullable: true })
+  effectivePlan(@Parent() user: UserModel): UserPlan {
+    return activePlan({
+      plan: user.plan ?? UserPlan.FREE,
+      planExpiresAt: user.planExpiresAt ?? null,
+    });
+  }
 
   @Query(() => [UserModel])
   @UseGuards(AdminGuard)
@@ -105,5 +116,14 @@ export class UsersResolver {
   @UseGuards(AdminGuard)
   async planHistory(@Args('userId') userId: string) {
     return this.usersService.planHistory(userId);
+  }
+
+  @Mutation(() => Int)
+  @UseGuards(AdminGuard, SuperAdminGuard)
+  async deletePlanChanges(
+    @GetCurrentUserId() adminId: string,
+    @Args({ name: 'ids', type: () => [String] }) ids: string[],
+  ) {
+    return this.usersService.deletePlanChanges(ids, adminId);
   }
 }

@@ -34,31 +34,31 @@ model User {
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
-  products        Product[]
-  favorites       Favorite[]
-  reviewsGiven    Review[]         @relation("ReviewAuthor")
-  reviewsReceived Review[]         @relation("ReviewSeller")
-  followers       Follower[]       @relation("Followed")
-  following       Follower[]       @relation("Follower")
-  rolCreated      Rol[]            @relation("User_Create_Rol")
-  notifications   Notification[]
-  pushTokens      PushToken[]
-  reportsMade     Report[]         @relation("ReportReporter")
-  reportsReceived Report[]         @relation("ReportReportedUser")
-  reportsReviewed Report[]         @relation("ReportReviewer")
-  otpCodes        OtpCode[]
-  homeSections    HomeSection[]    @relation("HomeSectionCreator")
-  homeSuggestions       HomeSuggestion[]       @relation("HomeSuggestionReviewer")
-  verificationRequests VerificationRequest[]
+  products              Product[]
+  favorites             Favorite[]
+  reviewsGiven          Review[]              @relation("ReviewAuthor")
+  reviewsReceived       Review[]              @relation("ReviewSeller")
+  followers             Follower[]            @relation("Followed")
+  following             Follower[]            @relation("Follower")
+  rolCreated            Rol[]                 @relation("User_Create_Rol")
+  notifications         Notification[]
+  pushTokens            PushToken[]
+  reportsMade           Report[]              @relation("ReportReporter")
+  reportsReceived       Report[]              @relation("ReportReportedUser")
+  reportsReviewed       Report[]              @relation("ReportReviewer")
+  otpCodes              OtpCode[]
+  homeSections          HomeSection[]         @relation("HomeSectionCreator")
+  homeSuggestions       HomeSuggestion[]      @relation("HomeSuggestionReviewer")
+  verificationRequests  VerificationRequest[]
   verificationsReviewed VerificationRequest[] @relation("VerificationReviewer")
-  planChanges     PlanChange[]     @relation("PlanChangeUser")
-  planChangesBy   PlanChange[]     @relation("PlanChangeAdmin")
-  savedSearches   SavedSearch[]
-  payments        Payment[]        @relation("PaymentUser")
-  paymentsCreated Payment[]        @relation("PaymentAdmin")
-  adminActions    AdminAction[]    @relation("AdminActionAdmin")
-  rol             Rol?             @relation(fields: [rolId], references: [id])
-  rolId           String?
+  planChanges           PlanChange[]          @relation("PlanChangeUser")
+  planChangesBy         PlanChange[]          @relation("PlanChangeAdmin")
+  savedSearches         SavedSearch[]
+  payments              Payment[]             @relation("PaymentUser")
+  paymentsCreated       Payment[]             @relation("PaymentAdmin")
+  adminActions          AdminAction[]         @relation("AdminActionAdmin")
+  rol                   Rol?                  @relation(fields: [rolId], references: [id])
+  rolId                 String?
 
   @@map("users")
 }
@@ -137,12 +137,12 @@ model Rol {
 model Category {
   id        String     @id @default(uuid())
   label     String
-  slug      String     @unique @db.VarChar(50)
+  slug      String     @unique
   color     String?    @db.VarChar(9)
   icon      String?
   parentId  String?
   sortOrder Int        @default(0) @map("sort_order")
-  parent    Category?  @relation("MenuToMenu", fields: [parentId], references: [id])
+  parent    Category?  @relation("MenuToMenu", fields: [parentId], references: [id], onDelete: Cascade)
   children  Category[] @relation("MenuToMenu")
   createdAt DateTime   @default(now()) @db.Timestamptz
   updatedAt DateTime   @updatedAt @map("updated_at")
@@ -541,14 +541,14 @@ model VerificationRequest {
 }
 
 model PlanChange {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  oldPlan     UserPlan @map("old_plan")
-  newPlan     UserPlan @map("new_plan")
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  oldPlan     UserPlan  @map("old_plan")
+  newPlan     UserPlan  @map("new_plan")
   expiresAt   DateTime? @map("expires_at")
-  reason      String?  @db.VarChar(500)
-  changedById String   @map("changed_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
+  reason      String?   @db.VarChar(500)
+  changedById String    @map("changed_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   user      User @relation("PlanChangeUser", fields: [userId], references: [id], onDelete: Cascade)
   changedBy User @relation("PlanChangeAdmin", fields: [changedById], references: [id])

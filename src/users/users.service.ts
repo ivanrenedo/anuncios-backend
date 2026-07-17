@@ -14,6 +14,7 @@ import { DEFAULT_ROLE_LABEL } from '../common/defaults';
 import { PLAN_PRICES } from '../common/plan-limits';
 import { AuditService } from '../audit/audit.service';
 import { NotificationEvents } from '../notifications/notifications.events';
+import { StorageService } from '../upload/storage.service';
 
 @Injectable()
 export class UsersService {
@@ -21,6 +22,7 @@ export class UsersService {
     private prisma: PrismaService,
     private events: EventEmitter2,
     private audit: AuditService,
+    private storage: StorageService,
   ) {}
 
   async findAll(take = 500, skip = 0, query?: string) {
@@ -79,7 +81,16 @@ export class UsersService {
   }
 
   async update(id: string, data: UpdateUserInput) {
-    return this.prisma.user.update({ where: { id }, data });
+    const before = await this.prisma.user.findUnique({
+      where: { id },
+      select: { avatarUrl: true, coverUrl: true },
+    });
+    const updated = await this.prisma.user.update({ where: { id }, data });
+    await this.cleanupReplacedUserImages(before, {
+      avatarUrl: data.avatarUrl,
+      coverUrl: data.coverUrl,
+    });
+    return updated;
   }
 
   /** Admin edit of any user by id (name, email, location, role, verified). */
@@ -133,7 +144,16 @@ export class UsersService {
 
   /** Delete a user and all of their dependent records, in one transaction. */
   async remove(id: string) {
-    return this.prisma.$transaction(async (tx) => {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { avatarUrl: true, coverUrl: true },
+    });
+    const productImages = await this.prisma.productImage.findMany({
+      where: { product: { sellerId: id } },
+      select: { url: true },
+    });
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
         where: { sellerId: id },
         select: { id: true },
@@ -160,6 +180,14 @@ export class UsersService {
       });
       return tx.user.delete({ where: { id } });
     });
+
+    await this.storage.deleteFiles([
+      user?.avatarUrl,
+      user?.coverUrl,
+      ...productImages.map((i) => i.url),
+    ]);
+
+    return result;
   }
 
   async findUserProducts(userId: string) {
@@ -297,5 +325,55 @@ export class UsersService {
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * SUPER_ADMIN purge of plan-history entries. Registers each affected user in
+   * the audit log so the fact-of-deletion survives even when the detail no
+   * longer does — a plain SUPER_ADMIN can wipe rows but can't hide the wipe.
+   */
+  async deletePlanChanges(ids: string[], adminId?: string) {
+    if (!ids.length) return 0;
+    const targets = await this.prisma.planChange.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userId: true },
+    });
+    const result = await this.prisma.planChange.deleteMany({
+      where: { id: { in: ids } },
+    });
+    const perUser = new Map<string, number>();
+    for (const t of targets) {
+      perUser.set(t.userId, (perUser.get(t.userId) ?? 0) + 1);
+    }
+    for (const [userId, count] of perUser) {
+      this.audit.log(
+        adminId,
+        'delete_plan_history',
+        'user',
+        userId,
+        `${count} registro(s)`,
+      );
+    }
+    return result.count;
+  }
+
+  /**
+   * When a user swaps their avatar/cover, drop the old file from disk. Only
+   * fires when the field was actually included in the input (`undefined` = not
+   * touched) and its value differs from what was on the record.
+   */
+  private async cleanupReplacedUserImages(
+    before: { avatarUrl: string | null; coverUrl: string | null } | null,
+    next: { avatarUrl?: string | null; coverUrl?: string | null },
+  ) {
+    if (!before) return;
+    const toDelete: (string | null)[] = [];
+    if (next.avatarUrl !== undefined && next.avatarUrl !== before.avatarUrl) {
+      toDelete.push(before.avatarUrl);
+    }
+    if (next.coverUrl !== undefined && next.coverUrl !== before.coverUrl) {
+      toDelete.push(before.coverUrl);
+    }
+    if (toDelete.length) await this.storage.deleteFiles(toDelete);
   }
 }

@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, Int, Float } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { GraphQLJSON } from 'graphql-type-json';
 import { HomeSectionsService } from './home-sections.service';

@@ -1,7 +1,8 @@
-import { Resolver, Mutation, Query, Args } from '@nestjs/graphql';
+import { Resolver, Mutation, Query, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { GqlAuthGuard } from './guards/gql-auth.guard';
+import { OptionalGqlAuthGuard } from './guards/optional-gql-auth.guard';
 import { GetCurrentUserId } from './decorators/current-user.decorator';
 import { AuthResponse } from './dto/auth-response';
 import { GoogleLoginInput } from './dto/google-login.input';
@@ -40,8 +41,10 @@ export class AuthResolver {
   }
 
   @Query(() => UserModel, { nullable: true })
-  @UseGuards(GqlAuthGuard)
-  async me(@GetCurrentUserId() userId: string) {
+  @UseGuards(OptionalGqlAuthGuard)
+  async me(@Context() ctx: any) {
+    const userId = ctx?.req?.user?.id;
+    if (!userId) return null;
     return this.authService.getMe(userId);
   }
 }

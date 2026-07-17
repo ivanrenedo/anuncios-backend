@@ -2,6 +2,7 @@ import { NestFactory, HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { GraphQLExceptionFilter } from './common/filters/graphql-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -15,7 +16,10 @@ async function bootstrap() {
 
   // Translate raw Prisma errors into clean, user-facing Spanish messages.
   const { httpAdapter } = app.get(HttpAdapterHost);
-  app.useGlobalFilters(new PrismaExceptionFilter(httpAdapter));
+  app.useGlobalFilters(
+    new PrismaExceptionFilter(httpAdapter),
+    new GraphQLExceptionFilter(),
+  );
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');

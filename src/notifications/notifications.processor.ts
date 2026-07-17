@@ -1,5 +1,4 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PushService } from './push.service';
 
@@ -24,8 +23,6 @@ export interface DeliveryJobData {
  */
 @Processor('notifications-delivery', { concurrency: 3 })
 export class NotificationsProcessor extends WorkerHost {
-  private readonly logger = new Logger(NotificationsProcessor.name);
-
   constructor(private push: PushService) {
     super();
   }

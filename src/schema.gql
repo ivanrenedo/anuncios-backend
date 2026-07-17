@@ -304,12 +304,14 @@ type Mutation {
   createRol(input: CreateRolInput!): RolModel!
   createSavedSearch(input: CreateSavedSearchInput!): SavedSearchModel!
   createUser(input: CreateUserInput!): UserModel!
+  deleteAdminActions(ids: [String!]!): Int!
   deleteAllNotifications: Int!
   deleteCategory(id: String!): CategoryModel!
   deleteHomeSection(id: String!): Boolean!
   deleteMyAccount: UserModel!
   deleteNotification(id: String!): NotificationModel!
   deletePayment(id: String!): PaymentModel!
+  deletePlanChanges(ids: [String!]!): Int!
   deleteProduct(id: String!): ProductModel!
   deleteReports(ids: [String!]!): Int!
   deleteReview(id: String!): ReviewModel!

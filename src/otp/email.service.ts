@@ -8,7 +8,7 @@ export class OtpEmailService {
   private from: string;
   private readonly logger = new Logger(OtpEmailService.name);
 
-  constructor(private config: ConfigService) {
+  constructor(config: ConfigService) {
     const user = config.get<string>('SMTP_USER');
     const pass = config.get<string>('SMTP_PASS');
     this.from = user || '';
