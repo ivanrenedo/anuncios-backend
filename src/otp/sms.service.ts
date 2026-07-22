@@ -25,7 +25,7 @@ export class SmsService {
     }
 
     await this.client.messages.create({
-      body: `Tu código de verificación de Market EG es: ${code}. Expira en 5 minutos.`,
+      body: `Tu código de verificación de Bomell es: ${code}. Expira en 5 minutos.`,
       from: this.from,
       to: phone,
     });

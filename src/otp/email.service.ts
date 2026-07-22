@@ -28,9 +28,9 @@ export class OtpEmailService {
     }
 
     await this.transporter.sendMail({
-      from: `"Market EG" <${this.from}>`,
+      from: `"Bomell" <${this.from}>`,
       to: email,
-      subject: 'Código de verificación - Market EG',
+      subject: 'Código de verificación - Bomell',
       html: `
         <div style="font-family:sans-serif;max-width:400px;margin:0 auto;padding:24px">
           <h2 style="color:#333">Código de verificación</h2>
