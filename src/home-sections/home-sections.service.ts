@@ -370,7 +370,7 @@ export class HomeSectionsService {
             userId: u.id,
             type: 'marketing',
             title: section.title,
-            body: section.subtitle || `Descubre lo nuevo en Bomell`,
+            body: section.subtitle || `Descubre lo nuevo en Bomelh`,
           }),
         ),
       );

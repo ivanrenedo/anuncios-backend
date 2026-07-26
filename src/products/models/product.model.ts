@@ -29,6 +29,14 @@ export class ProductImageModel {
 
   @Field(() => Int)
   sortOrder: number;
+
+  /** 'image' or 'video'. Kept as a string to avoid dragging the Prisma enum
+   *  into the GraphQL layer — the set of values is small and stable. */
+  @Field()
+  type: string;
+
+  @Field({ nullable: true })
+  thumbnailUrl?: string;
 }
 
 @ObjectType()

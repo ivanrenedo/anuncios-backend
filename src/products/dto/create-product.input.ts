@@ -7,6 +7,9 @@ export class CreateMarketplaceDetailInput {
 
   @Field({ nullable: true })
   model?: string;
+
+  @Field(() => [String], { nullable: true })
+  colors?: string[];
 }
 
 @InputType()
@@ -31,6 +34,9 @@ export class CreateVehicleDetailInput {
 
   @Field({ nullable: true })
   engine?: string;
+
+  @Field(() => [String], { nullable: true })
+  colors?: string[];
 }
 
 @InputType()
@@ -76,6 +82,20 @@ export class ProductAttributeInput {
 }
 
 @InputType()
+export class MediaItemInput {
+  @Field()
+  url: string;
+
+  /** 'image' | 'video' — validated in the resolver against the DB enum. */
+  @Field({ defaultValue: 'image' })
+  type: string;
+
+  /** Required for videos so the UI has something to render as a preview. */
+  @Field({ nullable: true })
+  thumbnailUrl?: string;
+}
+
+@InputType()
 export class CreateProductInput {
   @Field()
   categoryId: string;
@@ -100,6 +120,11 @@ export class CreateProductInput {
 
   @Field(() => [String], { nullable: true })
   imageUrls?: string[];
+
+  /** Preferred over `imageUrls`. Supports both images and videos with
+   *  thumbnails. If both are provided, `mediaItems` wins. */
+  @Field(() => [MediaItemInput], { nullable: true })
+  mediaItems?: MediaItemInput[];
 
   @Field(() => [ProductAttributeInput], { nullable: true })
   attributes?: ProductAttributeInput[];

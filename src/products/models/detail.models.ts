@@ -10,6 +10,9 @@ export class MarketplaceDetailModel {
 
   @Field({ nullable: true })
   model?: string;
+
+  @Field(() => [String])
+  colors: string[];
 }
 
 @ObjectType()
@@ -37,6 +40,9 @@ export class VehicleDetailModel {
 
   @Field({ nullable: true })
   engine?: string;
+
+  @Field(() => [String])
+  colors: string[];
 }
 
 @ObjectType()

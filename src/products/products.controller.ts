@@ -29,7 +29,7 @@ export class ProductsController {
       ? `${baseUrl}${product.images[0].url}`
       : product.images?.[0]?.url || '';
     const url = `${baseUrl}/p/${id}`;
-    const deepLink = `bomell://product/${id}`;
+    const deepLink = `bomelh://product/${id}`;
 
     const priceNum = Number(product.price);
     const priceText =
@@ -50,7 +50,7 @@ export class ProductsController {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} — Bomell</title>
+<title>${esc(title)} — Bomelh</title>
 <meta property="og:type" content="product">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(ogDesc)}">
@@ -58,7 +58,7 @@ export class ProductsController {
 <meta property="og:image:width" content="800">
 <meta property="og:image:height" content="800">
 <meta property="og:url" content="${esc(url)}">
-<meta property="og:site_name" content="Bomell">
+<meta property="og:site_name" content="Bomelh">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:description" content="${esc(ogDesc)}">
@@ -90,8 +90,8 @@ ${category ? `<p class="cat">${esc(category)}</p>` : ''}
 <h1>${esc(title)}</h1>
 ${priceText ? `<p class="price">${esc(priceText)}</p>` : ''}
 ${sellerName ? `<div class="seller">${sellerAvatar ? `<img src="${esc(sellerAvatar)}" alt="">` : ''}<div><p class="seller-name">${esc(sellerName)}</p>${city ? `<p class="seller-loc">${esc(city)}</p>` : ''}</div></div>` : ''}
-<a class="cta" id="open" href="${esc(deepLink)}">Abrir en Bomell</a>
-<p class="fallback" id="fallback" style="display:none">Si no se abre, descarga Bomell desde la tienda de aplicaciones.</p>
+<a class="cta" id="open" href="${esc(deepLink)}">Abrir en Bomelh</a>
+<p class="fallback" id="fallback" style="display:none">Si no se abre, descarga Bomelh desde la tienda de aplicaciones.</p>
 </div>
 </div>
 <script>

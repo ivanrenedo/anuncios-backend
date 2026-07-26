@@ -1,0 +1,99 @@
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.vscode/**'
+  workflow_dispatch:   # arranque manual desde la UI de GitHub
+
+# Un deploy a la vez por rama — evita que dos pushes rápidos se pisen en el
+# droplet a mitad de `docker compose up`.
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/anuncios-backend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # necesario para push a GHCR con el GITHUB_TOKEN
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "tag=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "tags<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${{ env.IMAGE }}:latest" >> "$GITHUB_OUTPUT"
+          echo "${{ env.IMAGE }}:sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          # Cache de layers en el propio Actions cache — build incremental
+          # entre pushes (>1min más rápido a partir del 2º deploy).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v4
+
+      # Carga la clave privada en un ssh-agent efímero de la vida del job.
+      # No se escribe a disco.
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust droplet host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Ensure remote directory
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "mkdir -p /opt/marketplace/backend"
+
+      - name: Upload docker-compose.yml
+        run: |
+          scp docker-compose.yml \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/marketplace/backend/docker-compose.yml
+
+      - name: Pull image and restart backend
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} bash <<'EOF'
+            set -euo pipefail
+            cd /opt/marketplace/backend
+            docker compose --env-file /opt/marketplace/.env pull
+            docker compose --env-file /opt/marketplace/.env up -d
+            # Limpia imágenes viejas que ya no referencia nadie — libera disco.
+            docker image prune -f
+          EOF

@@ -1,0 +1,37 @@
+# Dependency and build outputs — regenerated inside the image.
+node_modules
+dist
+coverage
+
+# Local dev artifacts.
+.git
+.gitignore
+.github
+.vscode
+.idea
+.editorconfig
+.eslintcache
+
+# Secrets — must never end up in the image.
+.env
+.env.*
+!.env.example
+
+# Runtime data that lives on volumes / Spaces, not inside the image.
+uploads
+tmp
+
+# Docs & IDE noise.
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+
+# Test files aren't shipped.
+test
+**/*.spec.ts
+**/*.test.ts
+
+# Docker itself.
+Dockerfile
+.dockerignore

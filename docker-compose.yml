@@ -1,0 +1,31 @@
+name: marketplace-backend
+
+# Backend service only — Postgres, Redis, Nginx and Certbot live in the infra
+# compose (/opt/marketplace/docker-compose.infra.yml on the droplet). Both stacks
+# share the external `marketplace_net` network and reach each other by service
+# name (backend → postgres:5432, backend → redis:6379).
+
+services:
+  backend:
+    image: ghcr.io/ivanrenedo/anuncios-backend:${TAG:-latest}
+    container_name: marketplace_backend
+    restart: unless-stopped
+    env_file:
+      - /opt/marketplace/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - marketplace_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  marketplace_net:
+    external: true

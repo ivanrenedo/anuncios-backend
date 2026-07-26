@@ -5,6 +5,7 @@ import {
   CreatePropertyDetailInput,
   CreateServiceDetailInput,
   CreateJobDetailInput,
+  MediaItemInput,
 } from './create-product.input';
 
 @InputType()
@@ -35,6 +36,10 @@ export class UpdateProductInput {
 
   @Field(() => [String], { nullable: true })
   imageUrls?: string[];
+
+  /** Preferred over `imageUrls`. See CreateProductInput for semantics. */
+  @Field(() => [MediaItemInput], { nullable: true })
+  mediaItems?: MediaItemInput[];
 
   @Field(() => CreateMarketplaceDetailInput, { nullable: true })
   marketplaceDetail?: CreateMarketplaceDetailInput;

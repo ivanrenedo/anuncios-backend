@@ -204,14 +204,21 @@ model ProductView {
 }
 
 model ProductImage {
-  id        String @id @default(uuid())
-  productId String @map("product_id")
-  url       String
-  sortOrder Int    @default(0) @map("sort_order")
+  id           String    @id @default(uuid())
+  productId    String    @map("product_id")
+  url          String
+  sortOrder    Int       @default(0) @map("sort_order")
+  type         MediaType @default(image)
+  thumbnailUrl String?   @map("thumbnail_url")
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_images")
+}
+
+enum MediaType {
+  image
+  video
 }
 
 model ProductAttribute {
@@ -226,10 +233,11 @@ model ProductAttribute {
 }
 
 model MarketplaceDetail {
-  id        String  @id @default(uuid())
-  productId String  @unique @map("product_id")
-  brand     String? @db.VarChar(100)
-  model     String? @db.VarChar(100)
+  id        String   @id @default(uuid())
+  productId String   @unique @map("product_id")
+  brand     String?  @db.VarChar(100)
+  model     String?  @db.VarChar(100)
+  colors    String[] @default([]) @db.VarChar(9)
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -237,15 +245,16 @@ model MarketplaceDetail {
 }
 
 model VehicleDetail {
-  id           String  @id @default(uuid())
-  productId    String  @unique @map("product_id")
-  operation    String? @db.VarChar(20)
-  brand        String? @db.VarChar(100)
-  model        String? @db.VarChar(100)
-  year         Int?    @db.SmallInt
+  id           String   @id @default(uuid())
+  productId    String   @unique @map("product_id")
+  operation    String?  @db.VarChar(20)
+  brand        String?  @db.VarChar(100)
+  model        String?  @db.VarChar(100)
+  year         Int?     @db.SmallInt
   kilometrage  Int?
-  transmission String? @db.VarChar(20)
-  engine       String? @db.VarChar(20)
+  transmission String?  @db.VarChar(20)
+  engine       String?  @db.VarChar(20)
+  colors       String[] @default([]) @db.VarChar(9)
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 

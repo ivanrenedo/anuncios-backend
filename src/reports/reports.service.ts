@@ -21,7 +21,7 @@ const RESOLVED_NOTIFICATION: Record<
 > = {
   reviewed: {
     title: 'Reporte revisado',
-    body: 'Hemos revisado tu reporte y tomado las medidas oportunas. Gracias por ayudarnos a mantener Bomell seguro.',
+    body: 'Hemos revisado tu reporte y tomado las medidas oportunas. Gracias por ayudarnos a mantener Bomelh seguro.',
   },
   dismissed: {
     title: 'Reporte revisado',

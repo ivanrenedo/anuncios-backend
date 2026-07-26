@@ -106,6 +106,7 @@ input CreateJobDetailInput {
 
 input CreateMarketplaceDetailInput {
   brand: String
+  colors: [String!]
   model: String
 }
 
@@ -119,6 +120,7 @@ input CreateProductInput {
   imageUrls: [String!]
   jobDetail: CreateJobDetailInput
   marketplaceDetail: CreateMarketplaceDetailInput
+  mediaItems: [MediaItemInput!]
   price: Float!
   propertyDetail: CreatePropertyDetailInput
   serviceDetail: CreateServiceDetailInput
@@ -177,6 +179,7 @@ input CreateUserInput {
 
 input CreateVehicleDetailInput {
   brand: String
+  colors: [String!]
   engine: String
   kilometrage: Int
   model: String
@@ -279,8 +282,15 @@ type JobDetailModel {
 
 type MarketplaceDetailModel {
   brand: String
+  colors: [String!]!
   id: ID!
   model: String
+}
+
+input MediaItemInput {
+  thumbnailUrl: String
+  type: String! = "image"
+  url: String!
 }
 
 type Mutation {
@@ -419,6 +429,8 @@ type ProductAttributeModel {
 type ProductImageModel {
   id: ID!
   sortOrder: Int!
+  thumbnailUrl: String
+  type: String!
   url: String!
 }
 
@@ -675,6 +687,7 @@ input UpdateProductInput {
   imageUrls: [String!]
   jobDetail: CreateJobDetailInput
   marketplaceDetail: CreateMarketplaceDetailInput
+  mediaItems: [MediaItemInput!]
   price: Float
   propertyDetail: CreatePropertyDetailInput
   serviceDetail: CreateServiceDetailInput
@@ -750,6 +763,7 @@ enum UserPlan {
 
 type VehicleDetailModel {
   brand: String
+  colors: [String!]!
   engine: String
   id: ID!
   kilometrage: Int

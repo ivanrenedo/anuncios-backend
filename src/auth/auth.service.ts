@@ -24,32 +24,46 @@ export class AuthService {
   ) {}
 
   async validateOrCreateUser(payload: GooglePayload) {
-    let user = await this.prisma.user.findUnique({
+    const byGoogleId = await this.prisma.user.findUnique({
       where: { googleId: payload.googleId },
     });
+    if (byGoogleId) return byGoogleId;
 
-    if (!user) {
-      // Ensure the default "USER" role exists and assign it to the new user.
-      const role = await this.prisma.rol.upsert({
-        where: { label: DEFAULT_ROLE_LABEL },
-        update: {},
-        create: {
-          label: DEFAULT_ROLE_LABEL,
-          description: 'Rol por defecto',
-          actions: [],
+    // A user may already exist with this email but no googleId (created via
+    // admin PIN, seeded, or a previous flow). Link the Google identity to
+    // that row instead of failing with P2002 on the email unique constraint.
+    const byEmail = await this.prisma.user.findUnique({
+      where: { email: payload.email },
+    });
+    if (byEmail) {
+      return this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: {
+          googleId: payload.googleId,
+          avatarUrl: byEmail.avatarUrl ?? payload.avatar,
         },
       });
-      const data: any = {
+    }
+
+    // Ensure the default "USER" role exists and assign it to the new user.
+    const role = await this.prisma.rol.upsert({
+      where: { label: DEFAULT_ROLE_LABEL },
+      update: {},
+      create: {
+        label: DEFAULT_ROLE_LABEL,
+        description: 'Rol por defecto',
+        actions: [],
+      },
+    });
+    return this.prisma.user.create({
+      data: {
         googleId: payload.googleId,
         email: payload.email,
         name: payload.name,
         avatarUrl: payload.avatar,
         rol: { connect: { id: role.id } },
-      };
-      user = await this.prisma.user.create({ data });
-    }
-
-    return user;
+      },
+    });
   }
 
   generateTokens(userId: string) {

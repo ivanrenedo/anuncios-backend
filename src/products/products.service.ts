@@ -17,6 +17,35 @@ import { PLAN_LIMITS, BOOST_PRICE, activePlan } from '../common/plan-limits';
 import { UserPlan } from '../users/dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../upload/storage.service';
+import { MediaType } from '@prisma/client';
+
+/** Normalize either legacy `imageUrls` (all images) or the newer
+ *  `mediaItems` (images + videos with thumbnails) into a single array of
+ *  `ProductImage.create` inputs. `mediaItems` wins when both are provided. */
+function toImageCreates(
+  imageUrls?: string[] | null,
+  mediaItems?:
+    | { url: string; type?: string; thumbnailUrl?: string | null }[]
+    | null,
+) {
+  if (mediaItems && mediaItems.length > 0) {
+    return mediaItems.map((m, i) => ({
+      url: m.url,
+      sortOrder: i,
+      type: m.type === 'video' ? MediaType.video : MediaType.image,
+      thumbnailUrl: m.thumbnailUrl ?? null,
+    }));
+  }
+  if (imageUrls && imageUrls.length > 0) {
+    return imageUrls.map((url, i) => ({
+      url,
+      sortOrder: i,
+      type: MediaType.image,
+      thumbnailUrl: null,
+    }));
+  }
+  return null;
+}
 
 const FULL_INCLUDE = {
   seller: true,
@@ -212,6 +241,7 @@ export class ProductsService {
 
     const {
       imageUrls,
+      mediaItems,
       attributes,
       marketplaceDetail,
       vehicleDetail,
@@ -221,7 +251,8 @@ export class ProductsService {
       ...productData
     } = input;
 
-    if (imageUrls && imageUrls.length > limits.maxImagesPerProduct) {
+    const imageCreates = toImageCreates(imageUrls, mediaItems);
+    if (imageCreates && imageCreates.length > limits.maxImagesPerProduct) {
       throw new BadRequestException(
         `Tu plan ${plan} permite un máximo de ${limits.maxImagesPerProduct} fotos por anuncio.`,
       );
@@ -231,9 +262,7 @@ export class ProductsService {
       data: {
         ...productData,
         sellerId,
-        images: imageUrls
-          ? { create: imageUrls.map((url, i) => ({ url, sortOrder: i })) }
-          : undefined,
+        images: imageCreates ? { create: imageCreates } : undefined,
         attributes: attributes ? { create: attributes } : undefined,
         marketplaceDetail: marketplaceDetail
           ? { create: marketplaceDetail }
@@ -265,8 +294,10 @@ export class ProductsService {
         'No tienes permiso para editar este anuncio',
       );
 
+    const incomingMediaCount =
+      input.mediaItems?.length ?? input.imageUrls?.length ?? 0;
     if (
-      input.imageUrls ||
+      incomingMediaCount > 0 ||
       (input.status === 'active' && product.status !== 'active')
     ) {
       const seller = await this.prisma.user.findUnique({
@@ -276,10 +307,7 @@ export class ProductsService {
       const plan = this.activePlan(seller);
       const limits = PLAN_LIMITS[plan];
 
-      if (
-        input.imageUrls &&
-        input.imageUrls.length > limits.maxImagesPerProduct
-      ) {
+      if (incomingMediaCount > limits.maxImagesPerProduct) {
         throw new BadRequestException(
           `Tu plan permite un máximo de ${limits.maxImagesPerProduct} fotos por anuncio.`,
         );
@@ -302,6 +330,7 @@ export class ProductsService {
     const {
       categoryId,
       imageUrls,
+      mediaItems,
       marketplaceDetail,
       vehicleDetail,
       propertyDetail,
@@ -312,20 +341,25 @@ export class ProductsService {
     const data: any = { ...rest };
     if (categoryId) data.category = { connect: { id: categoryId } };
 
-    let droppedImageUrls: string[] = [];
-    if (imageUrls) {
+    let droppedMediaUrls: string[] = [];
+    const imageCreates = toImageCreates(imageUrls, mediaItems);
+    if (imageCreates) {
       const previous = await this.prisma.productImage.findMany({
         where: { productId: id },
-        select: { url: true },
+        select: { url: true, thumbnailUrl: true },
       });
-      const kept = new Set(imageUrls);
-      droppedImageUrls = previous
-        .map((i) => i.url)
-        .filter((u) => !kept.has(u));
+      const keptUrls = new Set(imageCreates.map((c) => c.url));
+      const keptThumbs = new Set(
+        imageCreates.map((c) => c.thumbnailUrl).filter(Boolean) as string[],
+      );
+      for (const p of previous) {
+        if (!keptUrls.has(p.url)) droppedMediaUrls.push(p.url);
+        if (p.thumbnailUrl && !keptThumbs.has(p.thumbnailUrl)) {
+          droppedMediaUrls.push(p.thumbnailUrl);
+        }
+      }
       await this.prisma.productImage.deleteMany({ where: { productId: id } });
-      data.images = {
-        create: imageUrls.map((url, i) => ({ url, sortOrder: i })),
-      };
+      data.images = { create: imageCreates };
     }
     if (marketplaceDetail) {
       await this.prisma.marketplaceDetail.deleteMany({
@@ -356,8 +390,8 @@ export class ProductsService {
       include: FULL_INCLUDE,
     });
 
-    if (droppedImageUrls.length) {
-      await this.storage.deleteFiles(droppedImageUrls);
+    if (droppedMediaUrls.length) {
+      await this.storage.deleteFiles(droppedMediaUrls);
     }
 
     // Notify watchers only on an effective price drop. Effective price is the
@@ -380,7 +414,7 @@ export class ProductsService {
   async remove(id: string, sellerId: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: { images: { select: { url: true } } },
+      include: { images: { select: { url: true, thumbnailUrl: true } } },
     });
     if (!product) throw new NotFoundException('Anuncio no encontrado');
     // Owner-only: only the product's seller may delete it.
@@ -390,7 +424,10 @@ export class ProductsService {
       );
 
     const deleted = await this.prisma.product.delete({ where: { id } });
-    await this.storage.deleteFiles(product.images.map((i) => i.url));
+    const urls = product.images.flatMap((i) =>
+      [i.url, i.thumbnailUrl].filter(Boolean) as string[],
+    );
+    await this.storage.deleteFiles(urls);
     return deleted;
   }
 
@@ -506,7 +543,7 @@ export class ProductsService {
     if (!image) throw new NotFoundException('Imagen no encontrada');
 
     await this.prisma.productImage.delete({ where: { id: imageId } });
-    await this.storage.deleteFile(image.url);
+    await this.storage.deleteFiles([image.url, image.thumbnailUrl]);
     this.audit.log(adminId, 'delete_image', 'product', image.productId, image.url);
 
     return this.prisma.product.findUnique({
