@@ -7,17 +7,17 @@ CREATE TYPE "NotificationType_new" AS ENUM ('like', 'price', 'verified', 'saved'
 ALTER TABLE "notifications" ALTER COLUMN "type" TYPE "NotificationType_new" USING ("type"::text::"NotificationType_new");
 ALTER TYPE "NotificationType" RENAME TO "NotificationType_old";
 ALTER TYPE "NotificationType_new" RENAME TO "NotificationType";
-DROP TYPE "marketplace"."NotificationType_old";
+DROP TYPE "NotificationType_old";
 COMMIT;
 
 -- AlterEnum
 BEGIN;
 CREATE TYPE "ProductStatus_new" AS ENUM ('active', 'hide');
-ALTER TABLE "marketplace"."products" ALTER COLUMN "status" DROP DEFAULT;
+ALTER TABLE "products" ALTER COLUMN "status" DROP DEFAULT;
 ALTER TABLE "products" ALTER COLUMN "status" TYPE "ProductStatus_new" USING ("status"::text::"ProductStatus_new");
 ALTER TYPE "ProductStatus" RENAME TO "ProductStatus_old";
 ALTER TYPE "ProductStatus_new" RENAME TO "ProductStatus";
-DROP TYPE "marketplace"."ProductStatus_old";
+DROP TYPE "ProductStatus_old";
 ALTER TABLE "products" ALTER COLUMN "status" SET DEFAULT 'active';
 COMMIT;
 
