@@ -64,7 +64,13 @@ import { ExportModule } from './export/export.module';
       ],
       inject: [JwtService],
       useFactory: (jwt: JwtService) => ({
-        autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+        // In production the runtime image is read-only for `USER node` and has
+        // no `src/` folder, so keep the generated schema in memory. In dev we
+        // still write it out to `src/schema.gql` for tooling / diff review.
+        autoSchemaFile:
+          process.env.NODE_ENV === 'production'
+            ? true
+            : join(process.cwd(), 'src/schema.gql'),
         sortSchema: true,
         playground: true,
         // Normalize auth-related errors: any UNAUTHENTICATED error goes out
