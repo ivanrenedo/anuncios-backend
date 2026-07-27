@@ -13,7 +13,7 @@ CREATE TYPE "NotificationType_new" AS ENUM ('like', 'price', 'verified', 'follow
 ALTER TABLE "notifications" ALTER COLUMN "type" TYPE "NotificationType_new" USING ("type"::text::"NotificationType_new");
 ALTER TYPE "NotificationType" RENAME TO "NotificationType_old";
 ALTER TYPE "NotificationType_new" RENAME TO "NotificationType";
-DROP TYPE "marketplace"."NotificationType_old";
+DROP TYPE "NotificationType_old";
 COMMIT;
 
 -- DropForeignKey
