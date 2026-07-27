@@ -48,6 +48,9 @@ export class PushService {
       const tokens = rows
         .map((r) => r.token)
         .filter((t) => Expo.isExpoPushToken(t));
+      this.logger.log(
+        `sendToUser user=${userId} rows=${rows.length} validTokens=${tokens.length} title="${payload.title}"`,
+      );
       if (tokens.length === 0) return;
 
       const messages: ExpoPushMessage[] = tokens.map((to) => ({
@@ -63,11 +66,15 @@ export class PushService {
         try {
           const tickets = await this.expo.sendPushNotificationsAsync(chunk);
           tickets.forEach((ticket, i) => {
-            if (
-              ticket.status === 'error' &&
-              ticket.details?.error === 'DeviceNotRegistered'
-            ) {
-              void this.removeToken(chunk[i].to as string);
+            if (ticket.status === 'error') {
+              this.logger.warn(
+                `Expo ticket error to=${chunk[i].to} code=${ticket.details?.error ?? '?'} msg=${ticket.message ?? '?'}`,
+              );
+              if (ticket.details?.error === 'DeviceNotRegistered') {
+                void this.removeToken(chunk[i].to as string);
+              }
+            } else {
+              this.logger.log(`Expo ticket ok id=${ticket.id}`);
             }
           });
         } catch (err: any) {
