@@ -29,6 +29,10 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/package*.json ./
+# `prisma/seed.ts` imports from `../src/common/pin.util`; keep the sources and
+# tsconfig so `npm run seed` (ts-node) can run against production. Adds ~3 MB.
+COPY --from=build /app/src ./src
+COPY --from=build /app/tsconfig.json ./
 
 # Drop root privileges — the `node` user ships with the official image.
 USER node
