@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { ExportService, type ExportModel } from './export.service';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { SuperAdminGuard } from '../auth/guards/super-admin.guard';
@@ -26,8 +27,13 @@ function parseDate(value: string | undefined, label: 'from' | 'to'): Date | unde
  * Streams CSV exports for the admin panel. Every download is audited so we
  * have a trail of who pulled which PII/financial dataset. The heavy models
  * (payments, admin-actions) require SUPER_ADMIN on top of AdminGuard.
+ *
+ * Rate limit: 5 downloads per minute per IP, tighter than the app-wide 120/min.
+ * CSV exports stream the full dataset and are network/DB expensive — a runaway
+ * script or admin double-clicking on the button could drag Postgres down.
  */
 @Controller('export')
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
 export class ExportController {
   constructor(
     private service: ExportService,
