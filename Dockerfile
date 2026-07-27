@@ -39,6 +39,13 @@ USER node
 
 EXPOSE 3000
 
+# Docker marks the container unhealthy after 3 consecutive 5-second failures,
+# catching hangs and lost DB connectivity that `restart: unless-stopped`
+# alone would miss. `start-period` gives Nest + Prisma time to bootstrap
+# without counting those first attempts against the failure budget.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+  CMD wget -qO- http://localhost:3000/health > /dev/null 2>&1 || exit 1
+
 # Apply pending migrations, then start Nest. `exec` hands PID 1 to node so
 # SIGTERM from Docker reaches it and shutdown is graceful.
 CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/main.js"]
