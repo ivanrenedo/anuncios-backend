@@ -43,8 +43,11 @@ EXPOSE 3000
 # catching hangs and lost DB connectivity that `restart: unless-stopped`
 # alone would miss. `start-period` gives `prisma migrate deploy` (39+ migrations)
 # and Nest bootstrap time — 90 s cubre el arranque en frío en un droplet de 4 GB.
+# `127.0.0.1` en vez de `localhost` — evita el fallo típico Alpine donde
+# `localhost` resuelve primero a ::1 (IPv6) mientras Node escucha en 0.0.0.0
+# (IPv4 only) → wget da "Connection refused" aunque Nest esté arriba.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health > /dev/null 2>&1 || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/health > /dev/null 2>&1 || exit 1
 
 # Apply pending migrations, then start Nest. `exec` hands PID 1 to node so
 # SIGTERM from Docker reaches it and shutdown is graceful.
