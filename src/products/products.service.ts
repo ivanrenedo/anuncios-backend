@@ -73,6 +73,42 @@ function applyBoostSort<
   });
 }
 
+/**
+ * Accent- and case-insensitive text search across product title, description
+ * and seller name. Returns matching product IDs (up to `take`).
+ *
+ * SCHEMA DEPENDENCIES — update this helper if any of these are renamed:
+ *   products.id, products.title, products.description, products.seller_id
+ *   users.id, users.name
+ *
+ * The three columns are covered by GIN indexes on
+ * `immutable_unaccent(lower(col)) gin_trgm_ops`, so ILIKE '%q%' stays fast.
+ */
+async function matchingIdsByText(
+  prisma: PrismaService,
+  query: string,
+  take: number,
+): Promise<string[]> {
+  const q = query.trim();
+  // Guard: single-character queries would match too broadly and don't benefit
+  // from the trigram index anyway (trigrams need 3 chars).
+  if (q.length < 2) return [];
+  const like = `%${q}%`;
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT DISTINCT p.id
+    FROM products p
+    WHERE immutable_unaccent(lower(p.title))       ILIKE immutable_unaccent(lower(${like}))
+       OR immutable_unaccent(lower(p.description)) ILIKE immutable_unaccent(lower(${like}))
+       OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id = p.seller_id
+           AND immutable_unaccent(lower(u.name)) ILIKE immutable_unaccent(lower(${like}))
+       )
+    LIMIT ${take}
+  `;
+  return rows.map((r) => r.id);
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -108,7 +144,9 @@ export class ProductsService {
       ? {
           OR: [
             { title: { contains: query.trim(), mode: 'insensitive' } },
-            { seller: { name: { contains: query.trim(), mode: 'insensitive' } } },
+            {
+              seller: { name: { contains: query.trim(), mode: 'insensitive' } },
+            },
           ],
         }
       : {};
@@ -124,11 +162,21 @@ export class ProductsService {
   async search(input: SearchProductsInput) {
     const where: Prisma.ProductWhereInput = { status: 'active' };
 
+    // Text search: accent/case-insensitive across title, description and seller
+    // name. Done via a raw ID prefilter (see matchingIdsByText); the result
+    // constrains `where.id` so the rest of the Prisma query keeps its filters,
+    // ordering and pagination untouched.
     if (input.query) {
-      where.OR = [
-        { title: { contains: input.query, mode: 'insensitive' } },
-        { description: { contains: input.query, mode: 'insensitive' } },
-      ];
+      // Cap fetch well above any realistic first-page pagination — the exact
+      // ordering (bumpedAt/price) is applied by Prisma below on this subset.
+      const matchingIds = await matchingIdsByText(
+        this.prisma,
+        input.query,
+        500,
+      );
+      // `id: { in: [] }` forces zero rows; the trigram fallback below may
+      // still add fuzzy matches.
+      where.id = { in: matchingIds };
     }
     if (input.categoryId) {
       const children = await this.prisma.category.findMany({
@@ -171,23 +219,30 @@ export class ProductsService {
       skip: input.skip ?? 0,
     });
 
-    // Typo tolerance: when the exact `contains` match comes up short, fall
-    // back to trigram similarity on the title (pg_trgm). "iphon" → "iPhone".
+    // Typo tolerance: when the exact match comes up short, fall back to
+    // trigram similarity (pg_trgm) on both product title AND seller name.
+    // "iphon" → "iPhone"; "juna" → products of any seller named "Juan".
     if (input.query && products.length < 5) {
       try {
         const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-          SELECT id
-          FROM products
-          WHERE similarity(title, ${input.query}) > 0.25
-          ORDER BY similarity(title, ${input.query}) DESC
+          SELECT p.id
+          FROM products p
+          LEFT JOIN users u ON u.id = p.seller_id
+          WHERE similarity(p.title, ${input.query}) > 0.25
+             OR similarity(u.name,  ${input.query}) > 0.25
+          ORDER BY GREATEST(
+            similarity(p.title, ${input.query}),
+            COALESCE(similarity(u.name, ${input.query}), 0)
+          ) DESC
           LIMIT ${take}
         `;
         const found = new Set(products.map((p) => p.id));
         const extraIds = rows.map((r) => r.id).filter((id) => !found.has(id));
         if (extraIds.length > 0) {
-          // Keep every non-text filter (category, city, price…) — only the
-          // exact-text OR condition is replaced by the similarity match.
-          const { ...fuzzyWhere } = where;
+          // Keep every non-text filter (category, city, price…). Drop the
+          // exact-text id filter — extras come from the similarity match.
+          const fuzzyWhere: Prisma.ProductWhereInput = { ...where };
+          delete fuzzyWhere.id;
           const extras = await this.prisma.product.findMany({
             where: { ...fuzzyWhere, id: { in: extraIds } },
             include: FULL_INCLUDE,
@@ -424,8 +479,8 @@ export class ProductsService {
       );
 
     const deleted = await this.prisma.product.delete({ where: { id } });
-    const urls = product.images.flatMap((i) =>
-      [i.url, i.thumbnailUrl].filter(Boolean) as string[],
+    const urls = product.images.flatMap(
+      (i) => [i.url, i.thumbnailUrl].filter(Boolean) as string[],
     );
     await this.storage.deleteFiles(urls);
     return deleted;
@@ -521,7 +576,16 @@ export class ProductsService {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException('Anuncio no encontrado');
 
-    const { categoryId, imageUrls, marketplaceDetail, vehicleDetail, propertyDetail, serviceDetail, jobDetail, ...rest } = input;
+    const {
+      categoryId,
+      imageUrls,
+      marketplaceDetail,
+      vehicleDetail,
+      propertyDetail,
+      serviceDetail,
+      jobDetail,
+      ...rest
+    } = input;
     const data: any = { ...rest };
     if (categoryId) data.category = { connect: { id: categoryId } };
 
@@ -544,7 +608,13 @@ export class ProductsService {
 
     await this.prisma.productImage.delete({ where: { id: imageId } });
     await this.storage.deleteFiles([image.url, image.thumbnailUrl]);
-    this.audit.log(adminId, 'delete_image', 'product', image.productId, image.url);
+    this.audit.log(
+      adminId,
+      'delete_image',
+      'product',
+      image.productId,
+      image.url,
+    );
 
     return this.prisma.product.findUnique({
       where: { id: image.productId },
@@ -603,11 +673,12 @@ export class ProductsService {
   }
 
   async boostProduct(id: string, days = 7, adminId?: string) {
-    const until = new Date();
+    const now = new Date();
+    const until = new Date(now);
     until.setDate(until.getDate() + days);
     const product = await this.prisma.product.update({
       where: { id },
-      data: { boostedUntil: until },
+      data: { boostedUntil: until, bumpedAt: now },
       include: FULL_INCLUDE,
     });
 
@@ -629,7 +700,13 @@ export class ProductsService {
       },
     });
 
-    this.audit.log(adminId, 'boost', 'product', id, `${days} días — ${product.title}`);
+    this.audit.log(
+      adminId,
+      'boost',
+      'product',
+      id,
+      `${days} días — ${product.title}`,
+    );
     return product;
   }
 
@@ -651,6 +728,9 @@ export class ProductsService {
     const now = new Date();
     const premiumCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const starCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // Boosted products get re-bumped every hour so a paid 7-day boost stays
+    // at the top the entire window even as other sellers bump their own ads.
+    const boostedCutoff = new Date(now.getTime() - 60 * 60 * 1000);
 
     const premiumBumped = await this.prisma.product.updateMany({
       where: {
@@ -676,7 +756,20 @@ export class ProductsService {
       data: { bumpedAt: now },
     });
 
-    return { premiumBumped: premiumBumped.count, starBumped: starBumped.count };
+    const boostedBumped = await this.prisma.product.updateMany({
+      where: {
+        status: 'active',
+        boostedUntil: { gt: now },
+        bumpedAt: { lt: boostedCutoff },
+      },
+      data: { bumpedAt: now },
+    });
+
+    return {
+      premiumBumped: premiumBumped.count,
+      starBumped: starBumped.count,
+      boostedBumped: boostedBumped.count,
+    };
   }
 
   private activePlan(

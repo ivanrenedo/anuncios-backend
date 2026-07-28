@@ -22,9 +22,9 @@ export class ProductsCron {
   @Cron(CronExpression.EVERY_HOUR)
   async handleAutoBump() {
     const result = await this.products.autoBump();
-    if (result.premiumBumped || result.starBumped) {
+    if (result.premiumBumped || result.starBumped || result.boostedBumped) {
       this.logger.log(
-        `Auto-bump: ${result.premiumBumped} PREMIUM, ${result.starBumped} STAR`,
+        `Auto-bump: ${result.premiumBumped} PREMIUM, ${result.starBumped} STAR, ${result.boostedBumped} BOOSTED`,
       );
     }
   }
