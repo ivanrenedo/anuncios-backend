@@ -51,4 +51,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
 
 # Apply pending migrations, then start Nest. `exec` hands PID 1 to node so
 # SIGTERM from Docker reaches it and shutdown is graceful.
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/src/main.js"]
