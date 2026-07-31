@@ -3,7 +3,7 @@ import { UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { OtpService } from './otp.service';
 import { SmsService } from './sms.service';
-import { OtpEmailService } from './email.service';
+import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -22,7 +22,7 @@ export class OtpResolver {
   constructor(
     private otpService: OtpService,
     private smsService: SmsService,
-    private emailService: OtpEmailService,
+    private emailService: EmailService,
     private prisma: PrismaService,
     private jwt: JwtService,
   ) {}
@@ -90,7 +90,17 @@ export class OtpResolver {
       user.email,
       'pin_change',
     );
-    await this.emailService.sendOtp(user.email, code);
+    await this.emailService.send({
+      toEmail: user.email,
+      userId,
+      payload: {
+        template: 'pin_code',
+        data: { code, expiresInMinutes: 5 },
+      },
+      // Fresh code every request; the OTP row's id would be ideal but we don't
+      // have it here — codes themselves are single-use so template+code is enough.
+      dedupeKey: `pin_code:${userId}:${code}`,
+    });
 
     return { success: true, message: 'Código enviado a tu email' };
   }

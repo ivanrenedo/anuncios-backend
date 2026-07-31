@@ -18,7 +18,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:reset-db": "ts-node scripts/reset-test-db.ts",
+    "test:integration": "jest --config jest.integration.config.js"
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",
@@ -40,6 +42,8 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@react-email/components": "^0.0.36",
+    "@react-email/render": "^1.4.0",
     "@types/graphql-type-json": "^0.3.5",
     "bullmq": "^5.79.1",
     "class-transformer": "^0.5.1",
@@ -57,6 +61,8 @@
     "passport-jwt": "^4.0.1",
     "pg": "^8.21.0",
     "prisma": "^7.8.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "twilio": "^6.0.2",
@@ -65,6 +71,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
+    "@faker-js/faker": "^10.5.0",
+    "@golevelup/ts-jest": "^3.0.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
@@ -75,6 +83,8 @@
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.20.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@types/supertest": "^7.0.0",
     "@types/uuid": "^10.0.0",
     "eslint": "^9.18.0",
@@ -104,9 +114,37 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "guards/**/*.ts",
+      "common/plan-limits.ts",
+      "common/pin.util.ts",
+      "common/filters/*.ts",
+      "upload/storage.service.ts",
+      "audit/*.ts",
+      "!**/*.spec.ts",
+      "!**/*.d.ts",
+      "!**/dto/**"
     ],
     "coverageDirectory": "../coverage",
+    "coverageReporters": [
+      "text-summary",
+      "lcov"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 30,
+        "statements": 30,
+        "functions": 10,
+        "lines": 30
+      },
+      "src/common/plan-limits.ts": {
+        "statements": 100,
+        "lines": 100
+      },
+      "src/common/pin.util.ts": {
+        "statements": 90,
+        "lines": 90
+      }
+    },
     "testEnvironment": "node"
   }
 }

@@ -31,6 +31,8 @@ model User {
   planExpiresAt   DateTime?       @map("plan_expires_at")
   suspended       Boolean         @default(false)
   suspendedReason String?         @map("suspended_reason")
+  isBusiness      Boolean         @default(false) @map("is_business")
+  lastSeenAt      DateTime?       @map("last_seen_at")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -57,10 +59,35 @@ model User {
   payments              Payment[]             @relation("PaymentUser")
   paymentsCreated       Payment[]             @relation("PaymentAdmin")
   adminActions          AdminAction[]         @relation("AdminActionAdmin")
+  emailLogs             EmailLog[]
   rol                   Rol?                  @relation(fields: [rolId], references: [id])
   rolId                 String?
 
   @@map("users")
+}
+
+/// Audit + idempotency for outbound emails. Every send (queued, sent, failed,
+/// bounced) leaves a row. `dedupeKey` is a per-context natural key
+/// (e.g. `plan_activated:{userId}:{planChangeId}`) so retries and duplicate
+/// events never send twice.
+model EmailLog {
+  id            String        @id @default(uuid())
+  userId        String?       @map("user_id")
+  toEmail       String        @map("to_email") @db.VarChar(255)
+  template      EmailTemplate
+  subject       String        @db.VarChar(200)
+  status        EmailStatus   @default(queued)
+  providerMsgId String?       @map("provider_msg_id") @db.VarChar(200)
+  error         String?
+  dedupeKey     String?       @unique @map("dedupe_key") @db.VarChar(200)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  sentAt        DateTime?     @map("sent_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("email_logs")
 }
 
 /// A buyer's saved search: notifies the owner when a newly published product
@@ -532,6 +559,28 @@ enum UserPlan {
   FREE
   STAR
   PREMIUM
+}
+
+enum EmailTemplate {
+  pin_code
+  plan_activated
+  boost_receipt
+  verification_approved
+  verification_rejected
+  account_suspended
+  welcome
+  plan_expiring
+  plan_expired
+  activity_digest
+  comeback
+  admin_weekly_summary
+}
+
+enum EmailStatus {
+  queued
+  sent
+  failed
+  bounced
 }
 
 model VerificationRequest {

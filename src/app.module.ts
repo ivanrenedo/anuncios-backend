@@ -31,6 +31,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { AuditModule } from './audit/audit.module';
 import { ExportModule } from './export/export.module';
 import { HealthModule } from './health/health.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -146,6 +147,7 @@ import { HealthModule } from './health/health.module';
     AuditModule,
     ExportModule,
     HealthModule,
+    EmailModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: GqlThrottlerGuard }],
 })

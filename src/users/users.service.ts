@@ -15,6 +15,11 @@ import { PLAN_PRICES } from '../common/plan-limits';
 import { AuditService } from '../audit/audit.service';
 import { NotificationEvents } from '../notifications/notifications.events';
 import { StorageService } from '../upload/storage.service';
+import {
+  EmailEvents,
+  PlanActivatedEvent,
+  AccountSuspendedEvent,
+} from '../email/email.events';
 
 @Injectable()
 export class UsersService {
@@ -24,6 +29,22 @@ export class UsersService {
     private audit: AuditService,
     private storage: StorageService,
   ) {}
+
+  /**
+   * Public contact details for the business account (phone → WhatsApp, email).
+   * Falls back to hardcoded defaults if the flagged user is missing or lacks
+   * a phone, so mobile `Linking.openURL('https://wa.me/...')` never breaks.
+   */
+  async businessContact() {
+    const user = await this.prisma.user.findFirst({
+      where: { isBusiness: true },
+      select: { phone: true, email: true },
+    });
+    return {
+      phone: user?.phone?.trim() || '240222626418',
+      email: user?.email?.trim() || 'digitalcorps365@gmail.com',
+    };
+  }
 
   async findAll(take = 500, skip = 0, query?: string) {
     const q = query?.trim();
@@ -240,6 +261,14 @@ export class UsersService {
       data: { status: 'hide' },
     });
 
+    // Notify by email. The dedupe key uses `updatedAt` so re-suspending after
+    // an unsuspension fires a fresh email instead of being silenced.
+    this.events.emit(EmailEvents.AccountSuspended, {
+      userId: id,
+      reason: reason?.trim() || undefined,
+      suspendedAt: user.updatedAt,
+    } as AccountSuspendedEvent);
+
     this.audit.log(adminId, 'suspend_user', 'user', id, reason ?? user.name);
     return user;
   }
@@ -270,7 +299,7 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    const [updated] = await this.prisma.$transaction([
+    const [updated, planChange] = await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: input.userId },
         data: {
@@ -302,6 +331,15 @@ export class UsersService {
           createdById: adminId,
         },
       });
+
+      // Invoice email — only for paid plans; a FREE downgrade isn't a purchase.
+      this.events.emit(EmailEvents.PlanActivated, {
+        userId: input.userId,
+        plan: input.plan,
+        amount: Number(PLAN_PRICES[input.plan]),
+        planChangeId: planChange.id,
+        expiresAt: input.expiresAt ?? null,
+      } as PlanActivatedEvent);
     }
 
     this.events.emit(NotificationEvents.UserSecurity, {

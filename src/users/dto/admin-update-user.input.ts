@@ -21,4 +21,10 @@ export class AdminUpdateUserInput {
 
   @Field(() => PermissionAcces, { nullable: true })
   permission?: PermissionAcces;
+
+  /** Flags the account whose phone/email power `businessContact`. Only one
+   *  user can be the business at a time — the service clears the flag on
+   *  everyone else when this is set to true. */
+  @Field({ nullable: true })
+  isBusiness?: boolean;
 }

@@ -9,6 +9,7 @@ import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
 import { ChangePlanInput } from './dto/change-plan.input';
 import { PlanChangeModel } from './dto/plan-change.model';
+import { BusinessContactModel } from './dto/business-contact.model';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { ActionsGuard, RequireActions } from '../auth/guards/actions.guard';
@@ -40,6 +41,12 @@ export class UsersResolver {
   @Query(() => UserModel)
   async user(@Args('id') id: string) {
     return this.usersService.findOne(id);
+  }
+
+  /** Public contact info for the business account (WhatsApp + email). */
+  @Query(() => BusinessContactModel)
+  async businessContact() {
+    return this.usersService.businessContact();
   }
 
   @Mutation(() => UserModel)

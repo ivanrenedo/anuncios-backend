@@ -64,6 +64,9 @@ export class UserModel {
   suspendedReason?: string;
 
   @Field()
+  isBusiness: boolean;
+
+  @Field()
   notifMessages: boolean;
 
   @Field()

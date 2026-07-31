@@ -27,6 +27,7 @@ input AdminLoginInput {
 
 input AdminUpdateUserInput {
   email: String
+  isBusiness: Boolean
   location: String
   name: String
   permission: PermissionAcces
@@ -48,6 +49,11 @@ input BroadcastInput {
   plan: String
   sectionId: String
   title: String!
+}
+
+type BusinessContactModel {
+  email: String!
+  phone: String!
 }
 
 type CategoryModel {
@@ -478,6 +484,7 @@ type Query {
   adminActions(skip: Int, take: Int): [AdminActionModel!]!
   adminHomeSections: [HomeSectionModel!]!
   allProducts(query: String, skip: Int, take: Int): [ProductModel!]!
+  businessContact: BusinessContactModel!
   categories: [CategoryModel!]!
   category(id: String!): CategoryModel!
   categoryBySlug(slug: String!): CategoryModel!
@@ -732,6 +739,7 @@ type UserModel {
   effectivePlan: UserPlan
   email: String!
   id: ID!
+  isBusiness: Boolean!
   language: String!
   location: String
   maxActiveProducts: Int

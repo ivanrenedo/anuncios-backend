@@ -1,0 +1,88 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+# One concurrent test run per branch — a rebase-push doesn't queue two.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Prisma generate is required before the tsc transform runs — @prisma/client
+      # types come out of `node_modules/.prisma/client` and don't ship in the
+      # published package.
+      - run: npx prisma generate
+
+      # `--coverage` triggers the coverageThreshold gate: PR fails if any
+      # threshold in package.json → jest.coverageThreshold is not met.
+      - run: npm test -- --ci --coverage --reporters=default
+
+      - name: Upload coverage report (lcov)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    services:
+      # Same major as production (postgres:16-alpine). The image bundles unaccent
+      # and pg_trgm, so no extra install step is needed.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      # The test helpers default to this URL if TEST_DATABASE_URL is unset,
+      # but pin it explicitly so a helper refactor doesn't silently drift.
+      TEST_DATABASE_URL: postgres://postgres:admin@localhost:5432/postgres?schema=marketplace_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Run integration tests
+        run: npm run test:integration -- --ci --reporters=default

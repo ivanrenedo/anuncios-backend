@@ -16,7 +16,9 @@
     "strictNullChecks": false,
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "jsx": "react-jsx",
+    "esModuleInterop": true
   },
   "exclude": ["prisma.config.ts"]
 }

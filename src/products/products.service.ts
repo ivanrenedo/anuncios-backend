@@ -13,6 +13,7 @@ import { UpdateProductInput } from './dto/update-product.input';
 import { SearchProductsInput } from './dto/search-products.input';
 import { Prisma } from '@prisma/client';
 import { NotificationEvents } from '../notifications/notifications.events';
+import { EmailEvents, BoostReceiptEvent } from '../email/email.events';
 import { PLAN_LIMITS, BOOST_PRICE, activePlan } from '../common/plan-limits';
 import { UserPlan } from '../users/dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
@@ -78,11 +79,14 @@ function applyBoostSort<
  * and seller name. Returns matching product IDs (up to `take`).
  *
  * SCHEMA DEPENDENCIES — update this helper if any of these are renamed:
- *   products.id, products.title, products.description, products.seller_id
+ *   products.id, products.title, products.description, products.seller_id, products.category_id
  *   users.id, users.name
+ *   menus.id, menus.label, menus.parent_id (aka categories in the domain)
  *
- * The three columns are covered by GIN indexes on
- * `immutable_unaccent(lower(col)) gin_trgm_ops`, so ILIKE '%q%' stays fast.
+ * Every text column probed here has a GIN index on
+ * `immutable_unaccent(lower(col)) gin_trgm_ops`, so ILIKE '%q%' stays fast
+ * (see the `add_*_trgm_indexes` migrations). The menu match walks one level
+ * up so "vehículos" also returns rows in the "Coches" subcategory.
  */
 async function matchingIdsByText(
   prisma: PrismaService,
@@ -94,6 +98,11 @@ async function matchingIdsByText(
   // from the trigram index anyway (trigrams need 3 chars).
   if (q.length < 2) return [];
   const like = `%${q}%`;
+
+  // Column-name reminders for anyone editing the raw SQL below:
+  //   products: `category_id`, `seller_id`     (snake_case, no quotes)
+  //   menus:    `"parentId"`                   (camelCase → needs quotes)
+  //   Everything else in `menus` is snake_case-free (`label`, `id`).
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT DISTINCT p.id
     FROM products p
@@ -104,8 +113,21 @@ async function matchingIdsByText(
          WHERE u.id = p.seller_id
            AND immutable_unaccent(lower(u.name)) ILIKE immutable_unaccent(lower(${like}))
        )
+       OR EXISTS (
+         SELECT 1 FROM menus m
+         WHERE m.id = p.category_id
+           AND (
+             immutable_unaccent(lower(m.label)) ILIKE immutable_unaccent(lower(${like}))
+             OR EXISTS (
+               SELECT 1 FROM menus parent
+               WHERE parent.id = m."parentId"
+                 AND immutable_unaccent(lower(parent.label)) ILIKE immutable_unaccent(lower(${like}))
+             )
+           )
+       )
     LIMIT ${take}
   `;
+
   return rows.map((r) => r.id);
 }
 
@@ -183,6 +205,7 @@ export class ProductsService {
         where: { parentId: input.categoryId },
         select: { id: true },
       });
+
       const ids = [input.categoryId, ...children.map((c) => c.id)];
       where.categoryId = ids.length === 1 ? ids[0] : { in: ids };
     }
@@ -576,16 +599,7 @@ export class ProductsService {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException('Anuncio no encontrado');
 
-    const {
-      categoryId,
-      imageUrls,
-      marketplaceDetail,
-      vehicleDetail,
-      propertyDetail,
-      serviceDetail,
-      jobDetail,
-      ...rest
-    } = input;
+    const { categoryId, ...rest } = input;
     const data: any = { ...rest };
     if (categoryId) data.category = { connect: { id: categoryId } };
 
@@ -690,7 +704,7 @@ export class ProductsService {
     });
 
     // Boosts are sold manually (WhatsApp) — activating one IS the payment.
-    await this.prisma.payment.create({
+    const payment = await this.prisma.payment.create({
       data: {
         userId: product.sellerId,
         amount: BOOST_PRICE,
@@ -699,6 +713,17 @@ export class ProductsService {
         createdById: adminId ?? null,
       },
     });
+
+    // Invoice / receipt email — dedupe key = paymentId so a double-tap on
+    // the admin button doesn't email the seller twice.
+    this.events.emit(EmailEvents.BoostReceipt, {
+      userId: product.sellerId,
+      productId: product.id,
+      productTitle: product.title,
+      amount: Number(payment.amount),
+      paymentId: payment.id,
+      boostedUntil: until,
+    } as BoostReceiptEvent);
 
     this.audit.log(
       adminId,

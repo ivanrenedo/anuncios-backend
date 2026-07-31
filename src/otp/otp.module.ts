@@ -3,11 +3,12 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { OtpService } from './otp.service';
 import { SmsService } from './sms.service';
-import { OtpEmailService } from './email.service';
 import { OtpResolver } from './otp.resolver';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
+    EmailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -16,7 +17,7 @@ import { OtpResolver } from './otp.resolver';
       }),
     }),
   ],
-  providers: [OtpService, SmsService, OtpEmailService, OtpResolver],
+  providers: [OtpService, SmsService, OtpResolver],
   exports: [OtpService],
 })
 export class OtpModule {}

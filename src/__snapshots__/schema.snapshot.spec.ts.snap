@@ -1,0 +1,812 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`GraphQL schema matches the committed snapshot 1`] = `
+"# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+"""Permission verbs a role can perform on a resource."""
+enum Action {
+  create
+  delete
+  read
+  update
+}
+
+type AdminActionModel {
+  action: String!
+  admin: UserModel
+  createdAt: DateTime!
+  detail: String
+  id: ID!
+  targetId: String!
+  targetType: String!
+}
+
+input AdminLoginInput {
+  email: String!
+  pin: String!
+}
+
+input AdminUpdateUserInput {
+  email: String
+  isBusiness: Boolean
+  location: String
+  name: String
+  permission: PermissionAcces
+  rolId: String
+  verified: Boolean
+}
+
+type AuthResponse {
+  accessToken: String!
+  refreshToken: String!
+  user: UserModel
+}
+
+input BroadcastInput {
+  avatar: String
+  body: String
+  city: String
+  filterCat: String
+  plan: String
+  sectionId: String
+  title: String!
+}
+
+type BusinessContactModel {
+  email: String!
+  phone: String!
+}
+
+type CategoryModel {
+  children: [CategoryModel!]
+  color: String
+  createdAt: DateTime!
+  icon: String
+  id: ID!
+  label: String!
+  parent: CategoryModel
+  parentId: String
+  slug: String!
+  sortOrder: Int!
+  updatedAt: DateTime!
+}
+
+input ChangePinInput {
+  newPin: String!
+  pinChangeToken: String!
+}
+
+input ChangePlanInput {
+  expiresAt: DateTime
+  plan: UserPlan!
+  reason: String
+  userId: String!
+}
+
+input CreateCategoryInput {
+  color: String
+  icon: String
+  label: String!
+  parentId: String
+  slug: String!
+  sortOrder: Int
+}
+
+input CreateHomeSectionInput {
+  config: JSON
+  endsAt: DateTime
+  filter: JSON
+  icon: String
+  minResults: Int = 0
+  notifyOnCreate: Boolean = false
+  sortOrder: Int = 0
+  startsAt: DateTime
+  subtitle: String
+  title: String!
+  type: String!
+  visible: Boolean = true
+}
+
+input CreateJobDetailInput {
+  link: String
+}
+
+input CreateMarketplaceDetailInput {
+  brand: String
+  colors: [String!]
+  model: String
+}
+
+input CreateProductInput {
+  attributes: [ProductAttributeInput!]
+  categoryId: String!
+  city: String
+  condition: String
+  description: String
+  discount: Int
+  imageUrls: [String!]
+  jobDetail: CreateJobDetailInput
+  marketplaceDetail: CreateMarketplaceDetailInput
+  mediaItems: [MediaItemInput!]
+  price: Float!
+  propertyDetail: CreatePropertyDetailInput
+  serviceDetail: CreateServiceDetailInput
+  title: String!
+  vehicleDetail: CreateVehicleDetailInput
+}
+
+input CreatePropertyDetailInput {
+  address: String
+  bathrooms: Int = 0
+  bedrooms: Int = 0
+  floor: Int = 0
+  operation: String
+  surface: Int = 0
+}
+
+input CreateReportInput {
+  description: String
+  productId: String
+  reason: ReportReason!
+  reportedUserId: String
+  type: ReportType!
+}
+
+input CreateReviewInput {
+  rating: Int!
+  sellerId: String!
+  text: String
+}
+
+input CreateRolInput {
+  actions: [Action!]
+  description: String
+  label: String!
+}
+
+input CreateSavedSearchInput {
+  categoryId: String
+  city: String
+  priceMax: Float
+  priceMin: Float
+  query: String
+}
+
+input CreateServiceDetailInput {
+  offerType: String
+}
+
+input CreateUserInput {
+  email: String!
+  location: String
+  name: String!
+  pin: String! = "246810"
+  rolId: String
+}
+
+input CreateVehicleDetailInput {
+  brand: String
+  colors: [String!]
+  engine: String
+  kilometrage: Int
+  model: String
+  operation: String
+  transmission: String
+  year: Int
+}
+
+type DailyCountModel {
+  count: Int!
+  date: String!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type FavoriteModel {
+  createdAt: DateTime!
+  id: ID!
+  product: ProductModel
+  productId: String!
+  userId: String!
+}
+
+type FollowerModel {
+  createdAt: DateTime!
+  followed: UserModel
+  followedId: String!
+  follower: UserModel
+  followerId: String!
+  id: ID!
+}
+
+input GoogleLoginInput {
+  avatar: String
+  email: String!
+  googleId: String!
+  name: String!
+}
+
+type HomeSectionModel {
+  config: JSON
+  createdAt: DateTime!
+  createdBy: UserModel
+  createdById: String
+  endsAt: DateTime
+  filter: JSON
+  icon: String
+  id: ID!
+  minResults: Int!
+  notifyOnCreate: Boolean!
+  products: [ProductModel!]
+  sortOrder: Int!
+  startsAt: DateTime
+  subtitle: String
+  title: String!
+  type: String!
+  updatedAt: DateTime!
+  visible: Boolean!
+}
+
+type HomeSectionStats {
+  clicks: Int!
+  ctr: Float!
+  impressions: Int!
+  sectionId: String!
+}
+
+type HomeSuggestionModel {
+  createdAt: DateTime!
+  filter: JSON!
+  id: ID!
+  reason: String!
+  reviewedAt: DateTime
+  reviewedBy: UserModel
+  reviewedById: String
+  score: Float!
+  status: HomeSuggestionStatus!
+  title: String!
+  type: String!
+}
+
+enum HomeSuggestionStatus {
+  accepted
+  dismissed
+  pending
+}
+
+"""
+The \`JSON\` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+type JobDetailModel {
+  id: ID!
+  link: String
+}
+
+type MarketplaceDetailModel {
+  brand: String
+  colors: [String!]!
+  id: ID!
+  model: String
+}
+
+input MediaItemInput {
+  thumbnailUrl: String
+  type: String! = "image"
+  url: String!
+}
+
+type Mutation {
+  acceptHomeSuggestion(id: String!): HomeSectionModel!
+  adminDeleteProductImage(imageId: String!): ProductModel!
+  adminLogin(input: AdminLoginInput!): AuthResponse!
+  adminSetProductStatus(id: String!, reason: String, status: String!): ProductModel!
+  adminUpdateProduct(id: String!, input: UpdateProductInput!): ProductModel!
+  adminUpdateUser(id: String!, input: AdminUpdateUserInput!): UserModel!
+  approveVerification(id: String!): VerificationModel!
+  boostProduct(days: Int, id: String!): ProductModel!
+  bumpProduct(id: String!): ProductModel!
+  changePinWithOtp(input: ChangePinInput!): OtpResponse!
+  changePlan(input: ChangePlanInput!): UserModel!
+  contactProduct(id: String!): ProductModel!
+  createCategory(input: CreateCategoryInput!): CategoryModel!
+  createHomeSection(input: CreateHomeSectionInput!): HomeSectionModel!
+  createProduct(input: CreateProductInput!): ProductModel!
+  createReport(input: CreateReportInput!): ReportModel!
+  createReview(input: CreateReviewInput!): ReviewModel!
+  createRol(input: CreateRolInput!): RolModel!
+  createSavedSearch(input: CreateSavedSearchInput!): SavedSearchModel!
+  createUser(input: CreateUserInput!): UserModel!
+  deleteAdminActions(ids: [String!]!): Int!
+  deleteAllNotifications: Int!
+  deleteCategory(id: String!): CategoryModel!
+  deleteHomeSection(id: String!): Boolean!
+  deleteMyAccount: UserModel!
+  deleteNotification(id: String!): NotificationModel!
+  deletePayment(id: String!): PaymentModel!
+  deletePlanChanges(ids: [String!]!): Int!
+  deleteProduct(id: String!): ProductModel!
+  deleteReports(ids: [String!]!): Int!
+  deleteReview(id: String!): ReviewModel!
+  deleteRol(id: String!): RolModel!
+  deleteSavedSearch(id: String!): SavedSearchModel!
+  deleteUser(id: String!): UserModel!
+  deleteVerificationRequests(ids: [String!]!): Boolean!
+  dismissHomeSuggestion(id: String!): HomeSuggestionModel!
+  followUser(userId: String!): FollowerModel!
+  googleLogin(input: GoogleLoginInput!): AuthResponse!
+  logout: Boolean!
+  markAllNotificationsRead: Boolean!
+  markNotificationRead(id: String!): NotificationModel!
+  refreshToken(token: String!): AuthResponse!
+  registerPushToken(platform: String, token: String!): Boolean!
+  rejectVerification(id: String!, reason: String): VerificationModel!
+  removePushToken(token: String!): Boolean!
+  reorderHomeSections(ids: [String!]!): [HomeSectionModel!]!
+  requestPinChangeOtp: OtpResponse!
+  requestVerification: VerificationModel!
+  runStatsAnalyzer: Int!
+  sendMarketingNotification(input: BroadcastInput!): Int!
+  sendPhoneOtp(input: SendPhoneOtpInput!): OtpResponse!
+  sendSystemNotification(input: BroadcastInput!): Int!
+  suspendUser(id: String!, reason: String): UserModel!
+  toggleFavorite(productId: String!): ToggleFavoriteResponse!
+  trackHomeSectionEvent(event: String!, sectionId: String!, viewerKey: String!): Boolean!
+  unboostProduct(id: String!): ProductModel!
+  unfollowUser(userId: String!): FollowerModel!
+  unsuspendUser(id: String!): UserModel!
+  updateCategory(id: String!, input: UpdateCategoryInput!): CategoryModel!
+  updateHomeSection(id: String!, input: UpdateHomeSectionInput!): HomeSectionModel!
+  updateProduct(id: String!, input: UpdateProductInput!): ProductModel!
+  updateReportStatus(id: String!, note: String, status: ReportStatus!): ReportModel!
+  updateReview(id: String!, input: UpdateReviewInput!): ReviewModel!
+  updateRol(id: String!, input: UpdateRolInput!): RolModel!
+  updateUser(input: UpdateUserInput!): UserModel!
+  verifyPhoneOtp(input: VerifyPhoneOtpInput!): OtpResponse!
+  verifyPinChangeOtp(input: VerifyPinChangeOtpInput!): OtpResponse!
+  viewProduct(id: String!, viewerKey: String): ProductModel!
+}
+
+type NotificationModel {
+  avatar: String
+  body: String
+  createdAt: DateTime!
+  filterCat: String
+  id: ID!
+  read: Boolean!
+  relatedProductId: String
+  relatedUserId: String
+  sectionId: String
+  title: String!
+  type: String!
+  userId: String!
+}
+
+type OtpResponse {
+  message: String
+  pinChangeToken: String
+  success: Boolean!
+}
+
+type PaymentModel {
+  amount: Float!
+  concept: String!
+  createdAt: DateTime!
+  createdBy: UserModel
+  currency: String!
+  id: ID!
+  note: String
+  productId: String
+  user: UserModel
+  userId: String!
+}
+
+"""Whether a user can access the admin panel."""
+enum PermissionAcces {
+  DENIED
+  GRANTED
+}
+
+type PlanChangeModel {
+  changedById: String!
+  createdAt: DateTime!
+  expiresAt: DateTime
+  id: ID!
+  newPlan: UserPlan!
+  oldPlan: UserPlan!
+  reason: String
+  userId: String!
+}
+
+input ProductAttributeInput {
+  label: String!
+  value: String!
+}
+
+type ProductAttributeModel {
+  id: ID!
+  label: String!
+  value: String!
+}
+
+type ProductImageModel {
+  id: ID!
+  sortOrder: Int!
+  thumbnailUrl: String
+  type: String!
+  url: String!
+}
+
+type ProductModel {
+  attributes: [ProductAttributeModel!]
+  boostedUntil: DateTime
+  bumpedAt: DateTime!
+  category: CategoryModel
+  categoryId: String!
+  city: String
+  condition: String
+  contacts: Int!
+  createdAt: DateTime!
+  description: String
+  discount: Int
+  favoritesCount: Int!
+  id: ID!
+  images: [ProductImageModel!]
+  impressions: Int!
+  jobDetail: JobDetailModel
+  marketplaceDetail: MarketplaceDetailModel
+  price: Float!
+  propertyDetail: PropertyDetailModel
+  seller: UserModel
+  sellerId: String!
+  serviceDetail: ServiceDetailModel
+  status: String!
+  title: String!
+  updatedAt: DateTime!
+  vehicleDetail: VehicleDetailModel
+  views: Int!
+}
+
+type PropertyDetailModel {
+  address: String
+  bathrooms: Int!
+  bedrooms: Int!
+  floor: Int!
+  id: ID!
+  operation: String
+  surface: Int!
+}
+
+type Query {
+  adminActions(skip: Int, take: Int): [AdminActionModel!]!
+  adminHomeSections: [HomeSectionModel!]!
+  allProducts(query: String, skip: Int, take: Int): [ProductModel!]!
+  businessContact: BusinessContactModel!
+  categories: [CategoryModel!]!
+  category(id: String!): CategoryModel!
+  categoryBySlug(slug: String!): CategoryModel!
+  categoryChildren(parentId: String!): [CategoryModel!]!
+  categoryTree: [CategoryModel!]!
+  favoritesByUser(userId: String!): [FavoriteModel!]!
+  filterableSections: [HomeSectionModel!]!
+  followers(userId: String!): [FollowerModel!]!
+  followersCount(userId: String!): Int!
+  following(userId: String!): [FollowerModel!]!
+  followingCount(userId: String!): Int!
+  homeSectionStats: [HomeSectionStats!]!
+  homeSections(viewerKey: String): [HomeSectionModel!]!
+  homeSuggestions: [HomeSuggestionModel!]!
+  isFavorited(productId: String!): Boolean!
+  isFollowing(userId: String!): Boolean!
+  me: UserModel
+  myFavorites: [FavoriteModel!]!
+  mySavedSearches: [SavedSearchModel!]!
+  myVerificationRequest: VerificationModel
+  myViewsDaily(days: Int): [DailyCountModel!]!
+  notifications: [NotificationModel!]!
+  payments(skip: Int, take: Int): [PaymentModel!]!
+  planHistory(userId: String!): [PlanChangeModel!]!
+  previewFilterCount(filter: JSON!): Int!
+  product(id: String!): ProductModel!
+  products(skip: Int, take: Int): [ProductModel!]!
+  productsByCategory(categoryId: String!, skip: Int, take: Int): [ProductModel!]!
+  productsBySeller(sellerId: String!): [ProductModel!]!
+  reports: [ReportModel!]!
+  reviewStats: ReviewStats!
+  reviewsByAuthor(authorId: String!): [ReviewModel!]!
+  reviewsBySeller(sellerId: String!): [ReviewModel!]!
+  rol(id: String!): RolModel!
+  roles: [RolModel!]!
+  savedSearchStats(limit: Int): [SearchTermStatModel!]!
+  searchProducts(input: SearchProductsInput!): [ProductModel!]!
+  sectionProducts(sectionId: String!, skip: Int, take: Int): [ProductModel!]!
+  sellerRating(sellerId: String!): SellerRating!
+  topRatedSellers(limit: Int! = 6): [TopRatedSeller!]!
+  unreadNotificationsCount: Int!
+  user(id: String!): UserModel!
+  users(query: String, skip: Int, take: Int): [UserModel!]!
+  verificationRequests: [VerificationModel!]!
+}
+
+type RatingBucket {
+  count: Int!
+  stars: Int!
+}
+
+type ReportModel {
+  createdAt: DateTime!
+  description: String
+  id: ID!
+  product: ProductModel
+  productId: String
+  reason: ReportReason!
+  reportedUser: UserModel
+  reportedUserId: String
+  reporter: UserModel
+  reporterId: String!
+  resolutionNote: String
+  reviewedAt: DateTime
+  reviewedBy: UserModel
+  reviewedById: String
+  status: ReportStatus!
+  type: ReportType!
+}
+
+enum ReportReason {
+  fake
+  harassment
+  offensive
+  other
+  prohibited
+  scam
+  spam
+}
+
+enum ReportStatus {
+  dismissed
+  pending
+  reviewed
+}
+
+enum ReportType {
+  product
+  user
+}
+
+type ReviewModel {
+  author: UserModel
+  authorId: String!
+  createdAt: DateTime!
+  id: ID!
+  rating: Int!
+  seller: UserModel
+  sellerId: String!
+  text: String
+}
+
+type ReviewStats {
+  average: Float!
+  count: Int!
+  distribution: [RatingBucket!]!
+}
+
+type RolModel {
+  actions: [Action!]!
+  createdAt: DateTime!
+  createdBy: UserModel
+  createdById: String
+  description: String
+  id: ID!
+  label: String!
+  updatedAt: DateTime
+}
+
+type SavedSearchModel {
+  categoryId: String
+  city: String
+  createdAt: DateTime!
+  id: ID!
+  priceMax: Float
+  priceMin: Float
+  query: String
+  userId: String!
+}
+
+input SearchProductsInput {
+  categoryId: String
+  city: String
+  condition: String
+  priceMax: Float
+  priceMin: Float
+  query: String
+  skip: Int = 0
+  sortBy: String = "recent"
+  take: Int = 20
+}
+
+type SearchTermStatModel {
+  count: Float!
+  term: String!
+}
+
+type SellerRating {
+  average: Float!
+  count: Int!
+}
+
+input SendPhoneOtpInput {
+  phone: String!
+}
+
+type ServiceDetailModel {
+  id: ID!
+  offerType: String
+}
+
+type Subscription {
+  notificationCreated: NotificationModel!
+}
+
+type ToggleFavoriteResponse {
+  added: Boolean!
+}
+
+type TopRatedSeller {
+  average: Float!
+  count: Int!
+  name: String!
+  sellerId: String!
+}
+
+input UpdateCategoryInput {
+  color: String
+  icon: String
+  label: String
+  parentId: String
+  slug: String
+  sortOrder: Int
+}
+
+input UpdateHomeSectionInput {
+  config: JSON
+  endsAt: DateTime
+  filter: JSON
+  icon: String
+  minResults: Int
+  notifyOnCreate: Boolean
+  sortOrder: Int
+  startsAt: DateTime
+  subtitle: String
+  title: String
+  type: String
+  visible: Boolean
+}
+
+input UpdateProductInput {
+  categoryId: String
+  city: String
+  condition: String
+  description: String
+  discount: Int
+  imageUrls: [String!]
+  jobDetail: CreateJobDetailInput
+  marketplaceDetail: CreateMarketplaceDetailInput
+  mediaItems: [MediaItemInput!]
+  price: Float
+  propertyDetail: CreatePropertyDetailInput
+  serviceDetail: CreateServiceDetailInput
+  status: String
+  title: String
+  vehicleDetail: CreateVehicleDetailInput
+}
+
+input UpdateReviewInput {
+  rating: Int!
+  text: String
+}
+
+input UpdateRolInput {
+  actions: [Action!]
+  description: String
+  label: String
+}
+
+input UpdateUserInput {
+  avatarUrl: String
+  bio: String
+  coverUrl: String
+  email: String
+  language: String
+  location: String
+  name: String
+  notifMarketing: Boolean
+  notifMessages: Boolean
+  notifOffers: Boolean
+  phone: String
+  showEmail: Boolean
+  showPhone: Boolean
+  themePreference: String
+}
+
+type UserModel {
+  avatarUrl: String
+  bio: String
+  coverUrl: String
+  createdAt: DateTime!
+  effectivePlan: UserPlan
+  email: String!
+  id: ID!
+  isBusiness: Boolean!
+  language: String!
+  location: String
+  maxActiveProducts: Int
+  maxImagesPerProduct: Int
+  name: String!
+  notifMarketing: Boolean!
+  notifMessages: Boolean!
+  notifOffers: Boolean!
+  permission: PermissionAcces!
+  phone: String
+  plan: UserPlan!
+  planExpiresAt: DateTime
+  rolId: String
+  showEmail: Boolean!
+  showPhone: Boolean!
+  suspended: Boolean!
+  suspendedReason: String
+  themePreference: String!
+  updatedAt: DateTime!
+  verified: Boolean!
+}
+
+"""Plan de suscripción del usuario."""
+enum UserPlan {
+  FREE
+  PREMIUM
+  STAR
+}
+
+type VehicleDetailModel {
+  brand: String
+  colors: [String!]!
+  engine: String
+  id: ID!
+  kilometrage: Int
+  model: String
+  operation: String
+  transmission: String
+  year: Int
+}
+
+type VerificationModel {
+  createdAt: DateTime!
+  id: ID!
+  rejectedReason: String
+  reviewedAt: DateTime
+  reviewedBy: UserModel
+  reviewedById: String
+  status: VerificationStatus!
+  user: UserModel
+  userId: String!
+}
+
+enum VerificationStatus {
+  approved
+  pending
+  rejected
+}
+
+input VerifyPhoneOtpInput {
+  code: String!
+}
+
+input VerifyPinChangeOtpInput {
+  code: String!
+}"
+`;

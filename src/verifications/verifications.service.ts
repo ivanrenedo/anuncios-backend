@@ -3,8 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import {
+  EmailEvents,
+  VerificationApprovedEvent,
+  VerificationRejectedEvent,
+} from '../email/email.events';
 
 const INCLUDE = {
   user: true,
@@ -16,6 +22,7 @@ export class VerificationsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private events: EventEmitter2,
   ) {}
 
   async requestVerification(userId: string) {
@@ -110,6 +117,11 @@ export class VerificationsService {
       body: 'Tu solicitud de verificación ha sido aprobada. Ya tienes la insignia de verificado.',
     });
 
+    this.events.emit(EmailEvents.VerificationApproved, {
+      userId: request.userId,
+      requestId: request.id,
+    } as VerificationApprovedEvent);
+
     return updated;
   }
 
@@ -146,6 +158,12 @@ export class VerificationsService {
         ? `Tu solicitud fue rechazada: ${reason.trim()}`
         : 'Tu solicitud de verificación ha sido rechazada. Revisa tu perfil e inténtalo de nuevo.',
     });
+
+    this.events.emit(EmailEvents.VerificationRejected, {
+      userId: request.userId,
+      requestId: request.id,
+      reason: reason?.trim() || undefined,
+    } as VerificationRejectedEvent);
 
     return updated;
   }

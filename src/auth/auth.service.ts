@@ -4,10 +4,12 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
 import { PLAN_LIMITS, activePlan } from '../common/plan-limits';
+import { EmailEvents, UserRegisteredEvent } from '../email/email.events';
 
 interface GooglePayload {
   googleId: string;
@@ -21,6 +23,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private events: EventEmitter2,
   ) {}
 
   async validateOrCreateUser(payload: GooglePayload) {
@@ -55,7 +58,7 @@ export class AuthService {
         actions: [],
       },
     });
-    return this.prisma.user.create({
+    const created = await this.prisma.user.create({
       data: {
         googleId: payload.googleId,
         email: payload.email,
@@ -64,6 +67,12 @@ export class AuthService {
         rol: { connect: { id: role.id } },
       },
     });
+    // Onboarding email — fires only on genuine first-time creation (Google
+    // path). The email-linking branch above returns before hitting this.
+    this.events.emit(EmailEvents.UserRegistered, {
+      userId: created.id,
+    } as UserRegisteredEvent);
+    return created;
   }
 
   generateTokens(userId: string) {
@@ -113,6 +122,7 @@ export class AuthService {
     const user = await this.prisma.user.findFirst({
       where: { email: { equals: email.trim(), mode: 'insensitive' } },
     });
+
     if (!user || !verifyPin(pin, (user as any).pin)) {
       throw new UnauthorizedException('Email o PIN incorrecto');
     }
