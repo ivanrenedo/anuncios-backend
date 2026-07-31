@@ -2,13 +2,13 @@
  * One-off script to send the V2 email templates to a real recipient for
  * visual QA. Bootstraps a standalone Nest context so we don't need to bring
  * up the HTTP server or the BullMQ workers — the sends bypass the queue and
- * hit nodemailer directly through EmailService.send().
+ * hit Resend directly through EmailService.send().
  *
  * Run:
  *   npx ts-node --transpile-only scripts/send-test-emails.ts
  *
- * Requires SMTP_USER / SMTP_PASS in .env. Each send uses a timestamped
- * dedupeKey so re-runs deliver every time (instead of being deduped away).
+ * Requires RESEND_API_KEY in .env. Each send uses a timestamped dedupeKey so
+ * re-runs deliver every time (instead of being deduped away).
  */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';

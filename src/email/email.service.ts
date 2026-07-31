@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import * as React from 'react';
 import { render } from '@react-email/render';
 import { EmailStatus, EmailTemplate, Prisma } from '@prisma/client';
@@ -153,7 +153,7 @@ interface SendOptions {
 
 @Injectable()
 export class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
+  private client: Resend | null = null;
   private from: string;
   private readonly logger = new Logger(EmailService.name);
 
@@ -161,29 +161,20 @@ export class EmailService {
     config: ConfigService,
     private prisma: PrismaService,
   ) {
-    const user = config.get<string>('SMTP_USER');
-    const pass = config.get<string>('SMTP_PASS');
-    this.from = user || '';
-
-    if (user && pass) {
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        host: 'smtp.gmail.com',
-        port: 587,
-        secure: false,
-        auth: {
-          user,
-          pass,
-        },
-      });
+    const apiKey = config.get<string>('RESEND_API_KEY');
+    this.from =
+      config.get<string>('EMAIL_FROM') ?? 'Bomelh <noreply@bomelh.com>';
+    console.log(this.from);
+    if (apiKey) {
+      this.client = new Resend(apiKey);
     }
   }
 
   /**
    * Renders the template, records an {@link EmailLog} row and hands the
-   * message off to nodemailer. Returns the log id (or `null` when the send
+   * message off to Resend. Returns the log id (or `null` when the send
    * was deduped). Safe to await inline — callers that don't want to block
-   * on SMTP should enqueue instead of calling this directly.
+   * on the email provider should enqueue instead of calling this directly.
    */
   async send({
     toEmail,
@@ -231,10 +222,13 @@ export class EmailService {
       throw e;
     }
 
-    if (!this.transporter) {
-      // Dev fallback: no SMTP configured. Log preview and mark as sent so the
-      // audit row still exists — matches OtpEmailService's dev behavior.
-      this.logger.warn(`[DEV] Email a ${toEmail} (${subject}) — no SMTP`);
+    if (!this.client) {
+      // Dev fallback: no RESEND_API_KEY configured. Log preview and mark as
+      // sent so the audit row still exists — matches OtpEmailService's dev
+      // behavior.
+      this.logger.warn(
+        `[DEV] Email a ${toEmail} (${subject}) — no RESEND_API_KEY`,
+      );
       await this.prisma.emailLog.update({
         where: { id: log.id },
         data: { status: EmailStatus.sent, sentAt: new Date() },
@@ -243,17 +237,20 @@ export class EmailService {
     }
 
     try {
-      const info = await this.transporter.sendMail({
-        from: `"Bomelh" <${this.from}>`,
+      const { data, error } = await this.client.emails.send({
+        from: this.from,
         to: toEmail,
         subject,
         html,
       });
+      if (error) {
+        throw new Error(error.message ?? String(error));
+      }
       await this.prisma.emailLog.update({
         where: { id: log.id },
         data: {
           status: EmailStatus.sent,
-          providerMsgId: info.messageId ?? null,
+          providerMsgId: data?.id ?? null,
           sentAt: new Date(),
         },
       });
