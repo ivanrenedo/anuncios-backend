@@ -46,9 +46,39 @@ export class OtpResolver {
       phone,
       'phone_verify',
     );
-    await this.smsService.sendOtp(phone, code);
 
-    return { success: true, message: 'Código enviado' };
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+
+    // SMS + email en paralelo. Verify() compara por userId+purpose+code, así
+    // que el mismo código sirve por cualquiera de los dos canales — con que
+    // uno llegue, el usuario puede continuar. Fallback natural si SMS falla
+    // (Twilio caído, número raro) o si Resend tiene un tirón.
+    const results = await Promise.allSettled([
+      this.smsService.sendOtp(phone, code),
+      user?.email
+        ? this.emailService.send({
+            toEmail: user.email,
+            userId,
+            payload: {
+              template: 'pin_code',
+              data: { code, expiresInMinutes: 5 },
+            },
+            dedupeKey: `phone_verify:${userId}:${code}`,
+          })
+        : Promise.reject(new Error('user has no email')),
+    ]);
+
+    const anyDelivered = results.some((r) => r.status === 'fulfilled');
+    if (!anyDelivered) {
+      throw new BadRequestException(
+        'No se pudo enviar el código. Intenta de nuevo',
+      );
+    }
+
+    return { success: true, message: 'Código enviado por SMS y email' };
   }
 
   @Mutation(() => OtpResponse)
