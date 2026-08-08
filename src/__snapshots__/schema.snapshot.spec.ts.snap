@@ -767,6 +767,7 @@ type UserModel {
 
 """Plan de suscripción del usuario."""
 enum UserPlan {
+  BASIC
   FREE
   PREMIUM
   STAR
