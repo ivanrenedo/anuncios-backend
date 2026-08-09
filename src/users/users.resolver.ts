@@ -14,6 +14,7 @@ import {
   PlanActivationModel,
   PlanTotalPreviewModel,
 } from './dto/plan-activation.model';
+import { PlanStatsModel } from './dto/plan-stats.model';
 import { ProductModel } from '../products/models/product.model';
 import { BusinessContactModel } from './dto/business-contact.model';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
@@ -178,6 +179,20 @@ export class UsersResolver {
   @Query(() => [ProductModel])
   async pinnedProducts(@Args('userId') userId: string) {
     return this.usersService.pinnedProducts(userId);
+  }
+
+  /**
+   * v2 (Fase 10d) — Aggregate stats for the admin dashboard: distribution,
+   * MRR, churn de últimos 30d, expiring en próximos 7d, y activations por
+   * mes (últimos N meses, default 6).
+   */
+  @Query(() => PlanStatsModel)
+  @UseGuards(AdminGuard)
+  async adminPlanStats(
+    @Args('monthsBack', { type: () => Int, nullable: true })
+    monthsBack?: number,
+  ) {
+    return this.usersService.planStats(monthsBack ?? 6);
   }
 
   /**

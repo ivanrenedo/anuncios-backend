@@ -578,6 +578,94 @@ export class UsersService {
   }
 
   /**
+   * v2 (Fase 10d.1) — Aggregate stats for the admin dashboard. All numbers
+   * are computed on the fly with a small handful of grouped queries; there
+   * is no materialised view. Cheap enough for the current user count.
+   */
+  async planStats(monthsBack = 6) {
+    const now = new Date();
+
+    // Distribution — count users per plan. Users whose plan expired count as
+    // FREE (matches the daily downgrade cron + activePlan() helper).
+    const users = await this.prisma.user.findMany({
+      select: { plan: true, planExpiresAt: true },
+    });
+    const counts: Record<string, number> = {
+      FREE: 0,
+      BASIC: 0,
+      STAR: 0,
+      PREMIUM: 0,
+    };
+    let activeMrr = 0;
+    let expiringNext7d = 0;
+    let churnedLast30d = 0;
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 86_400_000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
+    for (const u of users) {
+      const effective = activePlan(u as { plan: string; planExpiresAt: Date | null });
+      counts[effective] = (counts[effective] ?? 0) + 1;
+      if (effective !== 'FREE') {
+        activeMrr += Number(PLAN_PRICES[effective] ?? 0);
+        if (
+          u.planExpiresAt &&
+          u.planExpiresAt > now &&
+          u.planExpiresAt <= sevenDaysFromNow
+        ) {
+          expiringNext7d += 1;
+        }
+      } else if (
+        u.plan !== 'FREE' &&
+        u.planExpiresAt &&
+        u.planExpiresAt <= now &&
+        u.planExpiresAt >= thirtyDaysAgo
+      ) {
+        // Row still labelled as paid but its expiry already passed → churn.
+        churnedLast30d += 1;
+      }
+    }
+
+    // Activations by month for the last N months. Bucketed by activatedAt
+    // UTC month; revenue is sum of totalPaid (already accounts for discount).
+    const monthsAgo = new Date(now);
+    monthsAgo.setUTCDate(1);
+    monthsAgo.setUTCMonth(monthsAgo.getUTCMonth() - (monthsBack - 1));
+    monthsAgo.setUTCHours(0, 0, 0, 0);
+    const activations = await this.prisma.planActivation.findMany({
+      where: { activatedAt: { gte: monthsAgo } },
+      select: { activatedAt: true, totalPaid: true },
+    });
+    const buckets = new Map<string, { count: number; revenue: number }>();
+    // Seed empty months so the chart doesn't have gaps.
+    for (let i = 0; i < monthsBack; i++) {
+      const d = new Date(monthsAgo);
+      d.setUTCMonth(monthsAgo.getUTCMonth() + i);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      buckets.set(key, { count: 0, revenue: 0 });
+    }
+    for (const a of activations) {
+      const key = `${a.activatedAt.getUTCFullYear()}-${String(a.activatedAt.getUTCMonth() + 1).padStart(2, '0')}`;
+      const bucket = buckets.get(key) ?? { count: 0, revenue: 0 };
+      bucket.count += 1;
+      bucket.revenue += Number(a.totalPaid);
+      buckets.set(key, bucket);
+    }
+    const activationsByMonth = Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, v]) => ({ month, activations: v.count, revenue: v.revenue }));
+
+    return {
+      distribution: (Object.keys(counts) as UserPlan[]).map((plan) => ({
+        plan,
+        count: counts[plan] ?? 0,
+      })),
+      activeMrr,
+      churnedLast30d,
+      expiringNext7d,
+      activationsByMonth,
+    };
+  }
+
+  /**
    * Pure preview for the admin panel. No DB access, no side effects. The
    * frontend polls this while the admin drags the "months" selector to render
    * the breakdown and the 12-months hint in real time.

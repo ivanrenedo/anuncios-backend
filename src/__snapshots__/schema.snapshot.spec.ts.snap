@@ -325,6 +325,12 @@ input MediaItemInput {
   url: String!
 }
 
+type MonthlyActivationsEntry {
+  activations: Int!
+  month: String!
+  revenue: Float!
+}
+
 type Mutation {
   acceptHomeSuggestion(id: String!): HomeSectionModel!
   adminActivatePlan(input: ActivatePlanInput!): PlanActivationModel!
@@ -471,6 +477,19 @@ enum PlanCycle {
   YEARLY
 }
 
+type PlanDistributionEntry {
+  count: Int!
+  plan: UserPlan!
+}
+
+type PlanStatsModel {
+  activationsByMonth: [MonthlyActivationsEntry!]!
+  activeMrr: Float!
+  churnedLast30d: Int!
+  distribution: [PlanDistributionEntry!]!
+  expiringNext7d: Int!
+}
+
 type PlanTotalPreviewModel {
   cheaperAtTwelve: CheaperAtTwelveWarningModel!
   discountAmount: Float!
@@ -545,6 +564,7 @@ type PropertyDetailModel {
 type Query {
   adminActions(skip: Int, take: Int): [AdminActionModel!]!
   adminHomeSections: [HomeSectionModel!]!
+  adminPlanStats(monthsBack: Int): PlanStatsModel!
   allProducts(query: String, skip: Int, take: Int): [ProductModel!]!
   businessContact: BusinessContactModel!
   categories: [CategoryModel!]!
