@@ -10,6 +10,13 @@ enum Action {
   update
 }
 
+input ActivatePlanInput {
+  months: Int!
+  notes: String
+  plan: UserPlan!
+  userId: String!
+}
+
 type AdminActionModel {
   action: String!
   admin: UserModel
@@ -80,6 +87,13 @@ input ChangePlanInput {
   plan: UserPlan!
   reason: String
   userId: String!
+}
+
+type CheaperAtTwelveWarningModel {
+  currentTotal: Float!
+  savings: Float!
+  triggered: Boolean!
+  yearlyTotal: Float!
 }
 
 input CreateCategoryInput {
@@ -301,6 +315,7 @@ input MediaItemInput {
 
 type Mutation {
   acceptHomeSuggestion(id: String!): HomeSectionModel!
+  adminActivatePlan(input: ActivatePlanInput!): PlanActivationModel!
   adminDeleteProductImage(imageId: String!): ProductModel!
   adminLogin(input: AdminLoginInput!): AuthResponse!
   adminSetProductStatus(id: String!, reason: String, status: String!): ProductModel!
@@ -410,6 +425,21 @@ enum PermissionAcces {
   GRANTED
 }
 
+type PlanActivationModel {
+  activatedAt: DateTime!
+  activatedByAdminId: String
+  discountPct: Float!
+  endsAt: DateTime!
+  id: ID!
+  months: Int!
+  notes: String
+  plan: UserPlan!
+  startsAt: DateTime!
+  totalPaid: Float!
+  unitPrice: Float!
+  userId: String!
+}
+
 type PlanChangeModel {
   changedById: String!
   createdAt: DateTime!
@@ -419,6 +449,17 @@ type PlanChangeModel {
   oldPlan: UserPlan!
   reason: String
   userId: String!
+}
+
+type PlanTotalPreviewModel {
+  cheaperAtTwelve: CheaperAtTwelveWarningModel!
+  discountAmount: Float!
+  discountPct: Float!
+  gross: Float!
+  months: Int!
+  plan: UserPlan!
+  total: Float!
+  unitPrice: Float!
 }
 
 input ProductAttributeInput {
@@ -508,7 +549,9 @@ type Query {
   myViewsDaily(days: Int): [DailyCountModel!]!
   notifications: [NotificationModel!]!
   payments(skip: Int, take: Int): [PaymentModel!]!
+  planActivations(userId: String!): [PlanActivationModel!]!
   planHistory(userId: String!): [PlanChangeModel!]!
+  planTotalPreview(months: Int!, plan: UserPlan!): PlanTotalPreviewModel!
   previewFilterCount(filter: JSON!): Int!
   product(id: String!): ProductModel!
   products(skip: Int, take: Int): [ProductModel!]!

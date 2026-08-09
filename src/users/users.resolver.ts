@@ -8,7 +8,12 @@ import { UpdateUserInput } from './dto/update-user.input';
 import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
 import { ChangePlanInput } from './dto/change-plan.input';
+import { ActivatePlanInput } from './dto/activate-plan.input';
 import { PlanChangeModel } from './dto/plan-change.model';
+import {
+  PlanActivationModel,
+  PlanTotalPreviewModel,
+} from './dto/plan-activation.model';
 import { BusinessContactModel } from './dto/business-contact.model';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -132,5 +137,40 @@ export class UsersResolver {
     @Args({ name: 'ids', type: () => [String] }) ids: string[],
   ) {
     return this.usersService.deletePlanChanges(ids, adminId);
+  }
+
+  /**
+   * v2 admin activation with multi-month duration + volume discount. Replaces
+   * `changePlan` for the new admin panel flow (Fase 8). `changePlan` is kept
+   * available for legacy calls until the panel migration is complete.
+   */
+  @Mutation(() => PlanActivationModel)
+  @UseGuards(AdminGuard, ActionsGuard)
+  @RequireActions('update')
+  async adminActivatePlan(
+    @GetCurrentUserId() adminId: string,
+    @Args('input') input: ActivatePlanInput,
+  ) {
+    return this.usersService.activatePlan(adminId, input);
+  }
+
+  @Query(() => [PlanActivationModel])
+  @UseGuards(AdminGuard)
+  async planActivations(@Args('userId') userId: string) {
+    return this.usersService.planActivations(userId);
+  }
+
+  /**
+   * Pure preview for the admin panel — no DB write. Returns the breakdown
+   * (unitPrice / gross / discount / total) and the 12-months warning so the
+   * UI can render the desglose in real time while the admin drags the picker.
+   */
+  @Query(() => PlanTotalPreviewModel)
+  @UseGuards(AdminGuard)
+  planTotalPreview(
+    @Args('plan', { type: () => UserPlan }) plan: UserPlan,
+    @Args('months', { type: () => Int }) months: number,
+  ) {
+    return this.usersService.planTotalPreview(plan, months);
   }
 }

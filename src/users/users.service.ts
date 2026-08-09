@@ -9,9 +9,17 @@ import { UpdateUserInput } from './dto/update-user.input';
 import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
 import { ChangePlanInput } from './dto/change-plan.input';
+import { ActivatePlanInput } from './dto/activate-plan.input';
 import { hashPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
 import { PLAN_PRICES } from '../common/plan-limits';
+import {
+  calculatePlanTotal,
+  warnIfCheaperAtTwelve,
+  PlanTotalBreakdown,
+  CheaperAtTwelveWarning,
+} from '../common/pricing';
+import { UserPlan } from './dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
 import { NotificationEvents } from '../notifications/notifications.events';
 import { StorageService } from '../upload/storage.service';
@@ -363,6 +371,146 @@ export class UsersService {
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * v2 admin activation with multi-month duration and volume discount.
+   *
+   * Upgrade/renewal policy (see docs/plans-v2-decisions.md):
+   *   - same plan, still active   → accumulate:    endsAt = planExpiresAt + months
+   *   - same plan, expired        → replace:       endsAt = now + months
+   *   - different plan (any state)→ replace:       endsAt = now + months
+   *                                                (remaining time on old plan
+   *                                                is lost — admin knows this)
+   *
+   * Writes atomically in one transaction:
+   *   - User          (plan, planCycle, planStartedAt, planExpiresAt)
+   *   - PlanActivation (full pricing breakdown, immutable sale record)
+   *   - PlanChange     (existing lightweight audit log, kept for compat)
+   *   - Payment        (revenue ledger — only when plan !== FREE)
+   *
+   * A single "period month" is normalised to 30 days: enough precision for a
+   * manual-payment product where the admin sets `endsAt` visually.
+   */
+  async activatePlan(adminId: string, input: ActivatePlanInput) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: input.userId },
+      select: {
+        id: true,
+        plan: true,
+        planExpiresAt: true,
+        planStartedAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Throws if months is out of [1,12] or plan is unknown.
+    const breakdown = calculatePlanTotal(input.plan, input.months);
+    const now = new Date();
+    const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+    const samePlanRenewal = input.plan === user.plan;
+    const stillActive = !!user.planExpiresAt && user.planExpiresAt > now;
+    const startsAt = samePlanRenewal && stillActive ? user.planExpiresAt! : now;
+    const endsAt = new Date(startsAt.getTime() + input.months * MONTH_MS);
+    const newPlanStartedAt =
+      samePlanRenewal && stillActive ? user.planStartedAt : now;
+    const newCycle = input.months === 12 ? 'YEARLY' : 'MONTHLY';
+
+    const [updatedUser, planActivation, planChange] =
+      await this.prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: input.userId },
+          data: {
+            plan: input.plan,
+            planCycle: newCycle,
+            planStartedAt: newPlanStartedAt,
+            planExpiresAt: endsAt,
+          },
+        });
+        const pa = await tx.planActivation.create({
+          data: {
+            userId: input.userId,
+            plan: input.plan,
+            months: input.months,
+            unitPrice: breakdown.unitPrice,
+            discountPct: breakdown.discountPct,
+            totalPaid: breakdown.total,
+            activatedByAdminId: adminId,
+            startsAt,
+            endsAt,
+            notes: input.notes ?? null,
+          },
+        });
+        const pc = await tx.planChange.create({
+          data: {
+            userId: input.userId,
+            oldPlan: user.plan,
+            newPlan: input.plan,
+            expiresAt: endsAt,
+            reason: input.notes ?? `${input.months}m via adminActivatePlan`,
+            changedById: adminId,
+          },
+        });
+        if (input.plan !== UserPlan.FREE && breakdown.total > 0) {
+          await tx.payment.create({
+            data: {
+              userId: input.userId,
+              amount: breakdown.total,
+              concept: `plan_${input.plan.toLowerCase()}`,
+              note: input.notes ?? `${input.months}m`,
+              createdById: adminId,
+            },
+          });
+        }
+        return [u, pa, pc];
+      });
+
+    if (input.plan !== UserPlan.FREE && breakdown.total > 0) {
+      this.events.emit(EmailEvents.PlanActivated, {
+        userId: input.userId,
+        plan: input.plan,
+        amount: breakdown.total,
+        planChangeId: planChange.id,
+        expiresAt: endsAt,
+      } as PlanActivatedEvent);
+    }
+
+    this.events.emit(NotificationEvents.UserSecurity, {
+      userId: input.userId,
+      summary: `Tu plan es ahora ${input.plan} por ${input.months} mes(es).`,
+    });
+
+    this.audit.log(
+      adminId,
+      'activate_plan',
+      'user',
+      input.userId,
+      `${user.plan} → ${input.plan} × ${input.months}m (${breakdown.total} XAF)`,
+    );
+
+    return planActivation;
+  }
+
+  async planActivations(userId: string) {
+    return this.prisma.planActivation.findMany({
+      where: { userId },
+      orderBy: { activatedAt: 'desc' },
+    });
+  }
+
+  /**
+   * Pure preview for the admin panel. No DB access, no side effects. The
+   * frontend polls this while the admin drags the "months" selector to render
+   * the breakdown and the 12-months hint in real time.
+   */
+  planTotalPreview(
+    plan: UserPlan,
+    months: number,
+  ): PlanTotalBreakdown & { cheaperAtTwelve: CheaperAtTwelveWarning } {
+    const breakdown = calculatePlanTotal(plan, months);
+    const cheaperAtTwelve = warnIfCheaperAtTwelve(plan, months);
+    return { ...breakdown, cheaperAtTwelve };
   }
 
   /**
