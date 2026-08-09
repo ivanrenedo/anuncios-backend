@@ -462,6 +462,12 @@ type PlanChangeModel {
   userId: String!
 }
 
+"""Ciclo de facturación del plan del usuario."""
+enum PlanCycle {
+  MONTHLY
+  YEARLY
+}
+
 type PlanTotalPreviewModel {
   cheaperAtTwelve: CheaperAtTwelveWarningModel!
   discountAmount: Float!
@@ -796,6 +802,7 @@ input UpdateUserInput {
 type UserModel {
   avatarUrl: String
   bio: String
+  businessVerifiedAt: DateTime
   coverUrl: String
   createdAt: DateTime!
   effectivePlan: UserPlan
@@ -813,7 +820,9 @@ type UserModel {
   permission: PermissionAcces!
   phone: String
   plan: UserPlan!
+  planCycle: PlanCycle!
   planExpiresAt: DateTime
+  planStartedAt: DateTime
   rolId: String
   showEmail: Boolean!
   showPhone: Boolean!
