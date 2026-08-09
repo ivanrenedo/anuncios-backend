@@ -75,18 +75,17 @@ Ver [[push-notifications]] en memoria para el estado de FCM.
 
 ## Addendum Fase 4 — 2026-08-09
 
-### 5. Sello "Responde rápido" diferido a v2.1
-**Decisión: no medimos `responseTimeMinutes` en v2.** El schema actual solo trackea `Product.contacts` como contador — no hay señal real de que el vendedor haya respondido (WhatsApp/tel son externos, no hay DM interno). Medir "seller responds fast" honestamente requiere:
+### 5. Sello "Responde rápido" retirado de todo el scope de v2
+**Decisión: no medimos `responseTimeMinutes` en v2 y no aparece en ninguna UI.** El schema actual solo trackea `Product.contacts` como contador — no hay señal real de que el vendedor haya respondido (WhatsApp/tel son externos, no hay DM interno). Medir "seller responds fast" honestamente requiere:
 - Un sistema de mensajería interno (fuera de scope), o
 - Un botón "ya le respondí" en mobile + honor system (fácilmente inflado).
 
-Ninguna opción cabía en Fase 4 sin comprometer la calidad del sello. **Retiro `responseTimeMinutes` del scope de v2**:
-- El campo existe en User (migration ya aplicada) pero se queda en `null`.
-- Premium NO enseña el sello "Responde rápido" al lanzar v2.
-- Cuando en v2.1 (o posterior) llegue DM interno u otro sistema medible, el sello se enciende.
+Ninguna opción cabía en Fase 4 sin comprometer la calidad del sello. **Retiro completo de v2 (confirmado 2026-08-09):**
+- Cron `responseTimeMinutes` NO se implementa (Fase 4.3).
+- El campo `User.responseTimeMinutes` existe (migration aplicada) pero se queda `null`.
+- El sello "Responde rápido" **NO se implementa en Shop (Fase 6), Mobile (Fase 7) ni en el admin panel (Fase 8)**. No hay flag oculto, no hay placeholder — está fuera del scope hasta v2.1.
 - Se mantiene el resto de ventajas Premium (verificación, tienda, carrusel, analytics completo, etc.).
-
-Cron `responseTimeMinutes` NO se implementa. Solo se implementan 4.1 (auto-bump por pool), 4.2 (carrusel Premium con fairness) y 4.4 (batcher de followers cada 6h).
+- Cuando en v2.1 (o posterior) llegue DM interno u otro sistema medible, se implementará cron + UI en un release aparte.
 
 ### 6. Retirada del onProductPublished follower handler
 Antes: `NotificationsListener.onProductPublished` disparaba 1 notif inmediata por follower cada vez que un vendedor publicaba.
