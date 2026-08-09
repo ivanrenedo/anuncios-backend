@@ -749,37 +749,28 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * v2 auto-bump: only re-stamps `bumpedAt` on products the seller has
+   * explicitly added to their `AutoBumpSlot` pool (Estrella: up to 3 slots
+   * weekly, Premium: up to 5 slots daily). Fase 5 exposes the mutation that
+   * lets sellers manage those slots; until then, an empty pool means the
+   * seller opted out (or hasn't opted in yet) and no auto-bump happens.
+   *
+   * Boosted products keep the legacy behavior — a paid boost is a hard
+   * commitment we honour independently of any slot pool.
+   */
   async autoBump() {
     const now = new Date();
-    const premiumCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const starCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    // Boosted products get re-bumped every hour so a paid 7-day boost stays
-    // at the top the entire window even as other sellers bump their own ads.
+    const weeklyCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const dailyCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const boostedCutoff = new Date(now.getTime() - 60 * 60 * 1000);
 
-    const premiumBumped = await this.prisma.product.updateMany({
-      where: {
-        status: 'active',
-        bumpedAt: { lt: premiumCutoff },
-        seller: {
-          plan: 'PREMIUM',
-          OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
-        },
-      },
-      data: { bumpedAt: now },
-    });
-
-    const starBumped = await this.prisma.product.updateMany({
-      where: {
-        status: 'active',
-        bumpedAt: { lt: starCutoff },
-        seller: {
-          plan: 'STAR',
-          OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
-        },
-      },
-      data: { bumpedAt: now },
-    });
+    const dailyBumped = await this.bumpBySlotCadence('DAILY', dailyCutoff, now);
+    const weeklyBumped = await this.bumpBySlotCadence(
+      'WEEKLY',
+      weeklyCutoff,
+      now,
+    );
 
     const boostedBumped = await this.prisma.product.updateMany({
       where: {
@@ -791,10 +782,42 @@ export class ProductsService {
     });
 
     return {
-      premiumBumped: premiumBumped.count,
-      starBumped: starBumped.count,
+      // Keep the legacy field names for compat with the cron logger; the
+      // semantic mapping today is Premium→DAILY, Star→WEEKLY.
+      premiumBumped: dailyBumped,
+      starBumped: weeklyBumped,
       boostedBumped: boostedBumped.count,
     };
+  }
+
+  private async bumpBySlotCadence(
+    cadence: 'DAILY' | 'WEEKLY',
+    cutoff: Date,
+    now: Date,
+  ): Promise<number> {
+    // Two-step (find IDs, then updateMany) because Prisma does not support
+    // filtering by a nested relation existence combined with an aggregate
+    // update in a single query on this schema.
+    const slots = await this.prisma.autoBumpSlot.findMany({
+      where: {
+        cadence,
+        product: {
+          status: 'active',
+          bumpedAt: { lt: cutoff },
+          seller: {
+            OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
+          },
+        },
+      },
+      select: { productId: true },
+    });
+    if (slots.length === 0) return 0;
+
+    const result = await this.prisma.product.updateMany({
+      where: { id: { in: slots.map((s) => s.productId) } },
+      data: { bumpedAt: now },
+    });
+    return result.count;
   }
 
   private activePlan(

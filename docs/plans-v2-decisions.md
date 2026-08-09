@@ -73,6 +73,27 @@ Ver [[push-notifications]] en memoria para el estado de FCM.
 - `Payment` ya existe como ledger. `PlanActivation` NO lo reemplaza: cada activación genera un `Payment` (concept=`plan_basic|plan_star|plan_premium`) y un `PlanActivation` (metadata de la venta).
 - `Follower` ya existe. Fase 5 añade solo el resolver `followSeller`/`unfollowSeller` si aún no están.
 
+## Addendum Fase 4 — 2026-08-09
+
+### 5. Sello "Responde rápido" diferido a v2.1
+**Decisión: no medimos `responseTimeMinutes` en v2.** El schema actual solo trackea `Product.contacts` como contador — no hay señal real de que el vendedor haya respondido (WhatsApp/tel son externos, no hay DM interno). Medir "seller responds fast" honestamente requiere:
+- Un sistema de mensajería interno (fuera de scope), o
+- Un botón "ya le respondí" en mobile + honor system (fácilmente inflado).
+
+Ninguna opción cabía en Fase 4 sin comprometer la calidad del sello. **Retiro `responseTimeMinutes` del scope de v2**:
+- El campo existe en User (migration ya aplicada) pero se queda en `null`.
+- Premium NO enseña el sello "Responde rápido" al lanzar v2.
+- Cuando en v2.1 (o posterior) llegue DM interno u otro sistema medible, el sello se enciende.
+- Se mantiene el resto de ventajas Premium (verificación, tienda, carrusel, analytics completo, etc.).
+
+Cron `responseTimeMinutes` NO se implementa. Solo se implementan 4.1 (auto-bump por pool), 4.2 (carrusel Premium con fairness) y 4.4 (batcher de followers cada 6h).
+
+### 6. Retirada del onProductPublished follower handler
+Antes: `NotificationsListener.onProductPublished` disparaba 1 notif inmediata por follower cada vez que un vendedor publicaba.
+Ahora (v2 Fase 4.4): el listener inline queda solo para `savedSearches`. Un cron horario (`FollowerNotifyCron`) agrupa las publicaciones nuevas por vendedor y emite 1 notif agregada por follower como máximo cada 6h. Latencia efectiva del follow: 1h–7h.
+
+Retención: 30 días para `PremiumCarouselDay` y `FollowerNotifyBatch`.
+
 ## Fases fuera de scope de v2
 
 - Vídeo en anuncios
