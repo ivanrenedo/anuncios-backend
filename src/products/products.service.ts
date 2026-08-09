@@ -181,7 +181,7 @@ export class ProductsService {
     });
   }
 
-  async search(input: SearchProductsInput) {
+  async search(input: SearchProductsInput, viewerId: string | null = null) {
     const where: Prisma.ProductWhereInput = { status: 'active' };
 
     // Text search: accent/case-insensitive across title, description and seller
@@ -287,11 +287,15 @@ export class ProductsService {
     }
 
     // Search impressions: fire-and-forget so the search response never waits
-    // on the counter write.
-    if (products.length > 0) {
+    // on the counter write. Exclude the viewer's own listings — otherwise a
+    // seller browsing Explore inflates their own "Búsquedas" stat.
+    const impressionIds = viewerId
+      ? products.filter((p) => p.sellerId !== viewerId).map((p) => p.id)
+      : products.map((p) => p.id);
+    if (impressionIds.length > 0) {
       void this.prisma.product
         .updateMany({
-          where: { id: { in: products.map((p) => p.id) } },
+          where: { id: { in: impressionIds } },
           data: { impressions: { increment: 1 } },
         })
         .catch(() => {});
@@ -519,7 +523,9 @@ export class ProductsService {
   }
 
   async registerView(id: string, viewerKey?: string) {
-    // Without a visitor key we can't dedup — fall back to a plain increment.
+    // Sin viewerKey no podemos dedup — fallback a un increment simple sin
+    // fila de evento (no distorsiona el chart porque no hay identidad para
+    // agrupar; el contador Product.views sí refleja el tráfico anónimo).
     if (!viewerKey) {
       return this.prisma.product.update({
         where: { id },
@@ -527,22 +533,28 @@ export class ProductsService {
       });
     }
 
-    const WINDOW_MS = 6 * 60 * 60 * 1000; // one counted view per visitor / 6h
-    const existing = await this.prisma.productView.findUnique({
-      where: { productId_viewerKey: { productId: id, viewerKey } },
-    });
+    const WINDOW_MS = 6 * 60 * 60 * 1000;
     const now = new Date();
 
-    if (existing && now.getTime() - existing.viewedAt.getTime() < WINDOW_MS) {
-      // Same visitor viewed it recently (refresh, StrictMode double-mount,
-      // re-navigation…) — don't inflate the counter.
+    // v2 Fase 12 — dedup 6h por (product, viewer) SIN unique constraint:
+    // buscamos la última visita del viewer con findFirst y comparamos.
+    // Fuera de ventana → creamos un evento NUEVO (create, no upsert), para
+    // que el chart "Visitas últimos 7 días" cuente eventos reales, no
+    // visitantes únicos con timestamp de su última visita.
+    const lastView = await this.prisma.productView.findFirst({
+      where: { productId: id, viewerKey },
+      orderBy: { viewedAt: 'desc' },
+      select: { viewedAt: true },
+    });
+
+    if (lastView && now.getTime() - lastView.viewedAt.getTime() < WINDOW_MS) {
+      // Mismo visitante en menos de 6h (refresh, StrictMode double-mount,
+      // re-navigation…) — no inflar el contador y no crear evento.
       return this.prisma.product.findUnique({ where: { id } });
     }
 
-    await this.prisma.productView.upsert({
-      where: { productId_viewerKey: { productId: id, viewerKey } },
-      create: { productId: id, viewerKey, viewedAt: now },
-      update: { viewedAt: now },
+    await this.prisma.productView.create({
+      data: { productId: id, viewerKey, viewedAt: now },
     });
 
     return this.prisma.product.update({

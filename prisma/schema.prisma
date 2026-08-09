@@ -250,7 +250,14 @@ model ProductView {
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([productId, viewerKey])
+  // v2 Fase 12 — el unique constraint (productId, viewerKey) se retiró para
+  // que el chart "Visitas últimos 7 días" cuente eventos reales (no visitantes
+  // únicos por última visita). El dedup de 6h ahora se resuelve con findFirst
+  // sobre el índice compuesto orderedBy viewedAt desc. La tabla puede crecer
+  // más rápido (una fila por visita >6h del mismo visitante); una limpieza
+  // periódica de rows >90d podría añadirse si el volumen lo justifica.
+  @@index([productId, viewerKey, viewedAt])
+  @@index([viewedAt])
   @@map("product_views")
 }
 
