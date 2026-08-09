@@ -93,7 +93,13 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
     expect(result.premiumBumped).toBe(0);
   });
 
-  it('WEEKLY slot: bumped past 7d cutoff', async () => {
+  it('WEEKLY slot: bumped past 7d cutoff (STAR seller — WEEKLY cadence)', async () => {
+    // v2 Fase 12 — WEEKLY solo aplica a plan STAR. Cambiamos el fixture
+    // Premium → STAR para reflejar el gate por plan añadido en el cron.
+    await prisma.user.update({
+      where: { id: sellerId },
+      data: { plan: 'STAR' },
+    });
     const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
     const product = await makeProduct(prisma, { sellerId, categoryId });
     await prisma.product.update({
@@ -107,6 +113,57 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
     const result = await service.autoBump();
     expect(result.starBumped).toBe(1);
     expect(result.premiumBumped).toBe(0);
+  });
+
+  it('cross-cadence: WEEKLY slot en seller PREMIUM NO bumpea (plan gate)', async () => {
+    // v2 Fase 12: si un vendedor era STAR (WEEKLY slots) y admin lo sube a
+    // PREMIUM, sus slots WEEKLY quedan huérfanos hasta que re-guarde. El
+    // cron no los bumpea con la cadencia vieja — protege contra plan drift.
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    const product = await makeProduct(prisma, { sellerId, categoryId });
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { bumpedAt: eightDaysAgo },
+    });
+    await prisma.autoBumpSlot.create({
+      data: { userId: sellerId, productId: product.id, cadence: 'WEEKLY' },
+    });
+
+    const result = await service.autoBump();
+    expect(result.starBumped).toBe(0);
+    expect(result.premiumBumped).toBe(0);
+  });
+
+  it('setAutoBumpSlots bumpea inmediatamente los productos NUEVOS del pool', async () => {
+    // v2 Fase 12: el cron corre cada hora pero solo si bumpedAt > 24h.
+    // Sin bump instantáneo al añadir al pool, el seller espera horas sin ver
+    // el cambio. Este test pin el comportamiento nuevo.
+    const oldBump = new Date(Date.now() - 30 * 60 * 1000); // 30 min ago
+    const product = await makeProduct(prisma, { sellerId, categoryId });
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { bumpedAt: oldBump },
+    });
+
+    await service.setAutoBumpSlots(sellerId, [product.id]);
+
+    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(after!.bumpedAt.getTime()).toBeGreaterThan(oldBump.getTime());
+  });
+
+  it('setAutoBumpSlots re-save de mismos ids NO re-bumpea', async () => {
+    // Diff logic: solo los NUEVOS ids reciben bump instantáneo.
+    const product = await makeProduct(prisma, { sellerId, categoryId });
+    // Primera pasada crea slot + bump instantáneo.
+    await service.setAutoBumpSlots(sellerId, [product.id]);
+    const firstBump = (await prisma.product.findUnique({ where: { id: product.id } }))!.bumpedAt;
+
+    // Un rato después, re-save con la misma lista (no diff): no debe re-bumpear.
+    await new Promise((r) => setTimeout(r, 30));
+    await service.setAutoBumpSlots(sellerId, [product.id]);
+    const secondBump = (await prisma.product.findUnique({ where: { id: product.id } }))!.bumpedAt;
+
+    expect(secondBump.getTime()).toBe(firstBump.getTime());
   });
 
   it('Only the slotted product bumps: sibling products untouched', async () => {

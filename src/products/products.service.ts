@@ -861,10 +861,30 @@ export class ProductsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      // v2 Fase 12 — bump inmediato de las adiciones netas:
+      // el cron corre cada hora pero solo re-stampea si bumpedAt < cutoff
+      // (24h DAILY, 7d WEEKLY). Sin este bump instantáneo, el vendedor añade
+      // un producto al pool y no ve nada durante horas → concluye "no
+      // funciona". Solo bumpeamos los NUEVOS del pool (diff), no todos, para
+      // no re-inflar en cada save.
+      const previous = await tx.autoBumpSlot.findMany({
+        where: { userId: sellerId },
+        select: { productId: true },
+      });
+      const previousIds = new Set(previous.map((s) => s.productId));
+      const netNew = productIds.filter((id) => !previousIds.has(id));
+
       await tx.autoBumpSlot.deleteMany({ where: { userId: sellerId } });
       for (const productId of productIds) {
         await tx.autoBumpSlot.create({
           data: { userId: sellerId, productId, cadence },
+        });
+      }
+
+      if (netNew.length > 0) {
+        await tx.product.updateMany({
+          where: { id: { in: netNew }, sellerId },
+          data: { bumpedAt: new Date() },
         });
       }
     });
@@ -895,6 +915,12 @@ export class ProductsService {
     // Two-step (find IDs, then updateMany) because Prisma does not support
     // filtering by a nested relation existence combined with an aggregate
     // update in a single query on this schema.
+    // v2 Fase 12 — filtro añadido por seller.plan. Sin este filtro, si un
+    // vendedor pasaba de Premium → Star (o Star → downgrade Free), sus slots
+    // DAILY seguían firing DIARIAMENTE aunque su plan actual no lo permite.
+    // Ahora Premium → cadence DAILY, Star → cadence WEEKLY; el resto se
+    // ignora hasta que el vendedor re-guarde su pool con la cadencia nueva.
+    const expectedPlan = cadence === 'DAILY' ? 'PREMIUM' : 'STAR';
     const slots = await this.prisma.autoBumpSlot.findMany({
       where: {
         cadence,
@@ -902,6 +928,7 @@ export class ProductsService {
           status: 'active',
           bumpedAt: { lt: cutoff },
           seller: {
+            plan: expectedPlan,
             OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
           },
         },
