@@ -474,10 +474,18 @@ export class ProductsService {
 
     // Notify watchers only on an effective price drop. Effective price is the
     // listed price discounted by `discount` (%), so a change to either field
-    // can trigger it. Skipped entirely when the price didn't actually drop.
+    // can trigger it. Also stamps `priceReducedUntil` so the "Rebajado hoy"
+    // chip lights up for 48h (Star/Premium plans; gate lives in the frontend).
     const oldEffective = effectivePrice(product.price, product.discount);
     const newEffective = effectivePrice(updated.price, updated.discount);
     if (newEffective < oldEffective) {
+      const stamped = await this.prisma.product.update({
+        where: { id },
+        data: {
+          priceReducedUntil: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        },
+        include: FULL_INCLUDE,
+      });
       this.events.emit(NotificationEvents.ProductPriceChanged, {
         productId: updated.id,
         productTitle: updated.title,
@@ -485,6 +493,7 @@ export class ProductsService {
         newPrice: newEffective,
         sellerId: updated.sellerId,
       });
+      return stamped;
     }
     return updated;
   }
@@ -788,6 +797,82 @@ export class ProductsService {
       starBumped: weeklyBumped,
       boostedBumped: boostedBumped.count,
     };
+  }
+
+  /**
+   * v2 (Fase 5). Replace the seller's auto-bump pool with the supplied ordered
+   * list of product ids. Cadence is derived from the seller's plan:
+   *   - Star    → WEEKLY, up to 3 slots
+   *   - Premium → DAILY, up to 5 slots
+   *   - Free/Basic → forbidden.
+   * Every id must belong to the caller and be active. Passing an empty array
+   * clears the pool.
+   */
+  async setAutoBumpSlots(sellerId: string, productIds: string[]) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: { id: true, plan: true, planExpiresAt: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const currentPlan = activePlan(user);
+    const { autoBumpSlots: max, autoBumpCadence: cadence } =
+      PLAN_LIMITS[currentPlan];
+    if (max === 0 || cadence == null) {
+      throw new BadRequestException(
+        'Tu plan actual no incluye auto-bump. Sube a Estrella o Premium.',
+      );
+    }
+    if (productIds.length > max) {
+      throw new BadRequestException(
+        `Tu plan permite hasta ${max} anuncios en el pool de auto-bump (recibí ${productIds.length}).`,
+      );
+    }
+    if (new Set(productIds).size !== productIds.length) {
+      throw new BadRequestException('Los IDs de anuncios no pueden repetirse.');
+    }
+
+    if (productIds.length > 0) {
+      const owned = await this.prisma.product.findMany({
+        where: {
+          id: { in: productIds },
+          sellerId,
+          status: 'active',
+        },
+        select: { id: true },
+      });
+      if (owned.length !== productIds.length) {
+        throw new BadRequestException(
+          'Todos los anuncios del pool deben ser tuyos y estar activos.',
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.autoBumpSlot.deleteMany({ where: { userId: sellerId } });
+      for (const productId of productIds) {
+        await tx.autoBumpSlot.create({
+          data: { userId: sellerId, productId, cadence },
+        });
+      }
+    });
+
+    return this.autoBumpSlots(sellerId);
+  }
+
+  async autoBumpSlots(sellerId: string) {
+    return this.prisma.autoBumpSlot.findMany({
+      where: { userId: sellerId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        product: {
+          include: {
+            images: { orderBy: { sortOrder: 'asc' } },
+            category: { include: { parent: true } },
+          },
+        },
+      },
+    });
   }
 
   private async bumpBySlotCadence(

@@ -2,6 +2,7 @@ import { Resolver, Query, Mutation, Args } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { VerificationsService } from './verifications.service';
 import { VerificationModel } from './dto/verification.model';
+import { RequestVerificationInput } from './dto/request-verification.input';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { GetCurrentUserId } from '../auth/decorators/current-user.decorator';
@@ -12,8 +13,11 @@ export class VerificationsResolver {
 
   @Mutation(() => VerificationModel)
   @UseGuards(GqlAuthGuard)
-  async requestVerification(@GetCurrentUserId() userId: string) {
-    return this.service.requestVerification(userId);
+  async requestVerification(
+    @GetCurrentUserId() userId: string,
+    @Args('input', { nullable: true }) input?: RequestVerificationInput,
+  ) {
+    return this.service.requestVerification(userId, input?.docs ?? []);
   }
 
   @Query(() => VerificationModel, { nullable: true })

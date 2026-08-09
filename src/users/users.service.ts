@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,7 +13,7 @@ import { ChangePlanInput } from './dto/change-plan.input';
 import { ActivatePlanInput } from './dto/activate-plan.input';
 import { hashPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
-import { PLAN_PRICES } from '../common/plan-limits';
+import { PLAN_PRICES, PLAN_LIMITS, activePlan } from '../common/plan-limits';
 import {
   calculatePlanTotal,
   warnIfCheaperAtTwelve,
@@ -497,6 +498,83 @@ export class UsersService {
       where: { userId },
       orderBy: { activatedAt: 'desc' },
     });
+  }
+
+  /**
+   * v2 (Fase 5.1). Seller-driven mutation: replace the seller's pinned-in-
+   * profile products with the supplied ordered list. Plan gates:
+   *   - Free/Basic → forbidden (limit 0)
+   *   - Star       → up to 4
+   *   - Premium    → up to 10
+   * Every id must belong to the caller and be active. The write clears the
+   * previous pins and re-inserts one row per id with `position` = array index.
+   */
+  async setPinnedProducts(userId: string, productIds: string[]) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, plan: true, planExpiresAt: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const currentPlan = activePlan(user);
+    const limit = PLAN_LIMITS[currentPlan].pinnedProducts;
+    if (limit === 0) {
+      throw new BadRequestException(
+        'Tu plan actual no permite anuncios fijados. Sube a Estrella o Premium.',
+      );
+    }
+    if (productIds.length > limit) {
+      throw new BadRequestException(
+        `Tu plan permite hasta ${limit} anuncios fijados (recibí ${productIds.length}).`,
+      );
+    }
+    if (new Set(productIds).size !== productIds.length) {
+      throw new BadRequestException('Los IDs de anuncios no pueden repetirse.');
+    }
+
+    if (productIds.length > 0) {
+      const owned = await this.prisma.product.findMany({
+        where: {
+          id: { in: productIds },
+          sellerId: userId,
+          status: 'active',
+        },
+        select: { id: true },
+      });
+      if (owned.length !== productIds.length) {
+        throw new BadRequestException(
+          'Todos los anuncios fijados deben ser tuyos y estar activos.',
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.pinnedProduct.deleteMany({ where: { userId } });
+      for (let i = 0; i < productIds.length; i++) {
+        await tx.pinnedProduct.create({
+          data: { userId, productId: productIds[i], position: i },
+        });
+      }
+    });
+
+    return this.pinnedProducts(userId);
+  }
+
+  async pinnedProducts(userId: string) {
+    const pins = await this.prisma.pinnedProduct.findMany({
+      where: { userId },
+      orderBy: { position: 'asc' },
+      include: {
+        product: {
+          include: {
+            seller: true,
+            category: { include: { parent: true } },
+            images: { orderBy: { sortOrder: 'asc' } },
+          },
+        },
+      },
+    });
+    return pins.map((p) => p.product);
   }
 
   /**

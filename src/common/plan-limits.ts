@@ -6,24 +6,32 @@ export const PLAN_LIMITS = {
     maxImagesPerProduct: 4,
     includedBoostsPerMonth: 0,
     pinnedProducts: 0,
+    autoBumpSlots: 0,
+    autoBumpCadence: null as 'DAILY' | 'WEEKLY' | null,
   },
   [UserPlan.BASIC]: {
     maxActiveProducts: 15,
     maxImagesPerProduct: 4,
     includedBoostsPerMonth: 1,
     pinnedProducts: 0,
+    autoBumpSlots: 0,
+    autoBumpCadence: null as 'DAILY' | 'WEEKLY' | null,
   },
   [UserPlan.STAR]: {
     maxActiveProducts: 30,
     maxImagesPerProduct: 6,
     includedBoostsPerMonth: 3,
     pinnedProducts: 4,
+    autoBumpSlots: 3,
+    autoBumpCadence: 'WEEKLY' as 'DAILY' | 'WEEKLY' | null,
   },
   [UserPlan.PREMIUM]: {
     maxActiveProducts: 100,
     maxImagesPerProduct: 6,
     includedBoostsPerMonth: 8,
     pinnedProducts: 10,
+    autoBumpSlots: 5,
+    autoBumpCadence: 'DAILY' as 'DAILY' | 'WEEKLY' | null,
   },
 } as const;
 

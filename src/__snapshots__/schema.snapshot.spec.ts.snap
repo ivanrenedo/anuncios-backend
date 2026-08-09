@@ -51,6 +51,15 @@ type AuthResponse {
   user: UserModel
 }
 
+type AutoBumpSlotModel {
+  cadence: String!
+  createdAt: DateTime!
+  id: ID!
+  product: ProductModel
+  productId: String!
+  userId: String!
+}
+
 input BroadcastInput {
   avatar: String
   body: String
@@ -365,11 +374,13 @@ type Mutation {
   removePushToken(token: String!): Boolean!
   reorderHomeSections(ids: [String!]!): [HomeSectionModel!]!
   requestPinChangeOtp: OtpResponse!
-  requestVerification: VerificationModel!
+  requestVerification(input: RequestVerificationInput): VerificationModel!
   runStatsAnalyzer: Int!
   sendMarketingNotification(input: BroadcastInput!): Int!
   sendPhoneOtp(input: SendPhoneOtpInput!): OtpResponse!
   sendSystemNotification(input: BroadcastInput!): Int!
+  setAutoBumpSlots(productIds: [String!]!): [AutoBumpSlotModel!]!
+  setPinnedProducts(productIds: [String!]!): [ProductModel!]!
   suspendUser(id: String!, reason: String): UserModel!
   toggleFavorite(productId: String!): ToggleFavoriteResponse!
   trackHomeSectionEvent(event: String!, sectionId: String!, viewerKey: String!): Boolean!
@@ -503,6 +514,7 @@ type ProductModel {
   jobDetail: JobDetailModel
   marketplaceDetail: MarketplaceDetailModel
   price: Float!
+  priceReducedUntil: DateTime
   propertyDetail: PropertyDetailModel
   seller: UserModel
   sellerId: String!
@@ -540,18 +552,21 @@ type Query {
   followersCount(userId: String!): Int!
   following(userId: String!): [FollowerModel!]!
   followingCount(userId: String!): Int!
+  homeCarouselPremium(take: Int): [ProductModel!]!
   homeSectionStats: [HomeSectionStats!]!
   homeSections(viewerKey: String): [HomeSectionModel!]!
   homeSuggestions: [HomeSuggestionModel!]!
   isFavorited(productId: String!): Boolean!
   isFollowing(userId: String!): Boolean!
   me: UserModel
+  myAutoBumpSlots: [AutoBumpSlotModel!]!
   myFavorites: [FavoriteModel!]!
   mySavedSearches: [SavedSearchModel!]!
   myVerificationRequest: VerificationModel
   myViewsDaily(days: Int): [DailyCountModel!]!
   notifications: [NotificationModel!]!
   payments(skip: Int, take: Int): [PaymentModel!]!
+  pinnedProducts(userId: String!): [ProductModel!]!
   planActivations(userId: String!): [PlanActivationModel!]!
   planHistory(userId: String!): [PlanChangeModel!]!
   planTotalPreview(months: Int!, plan: UserPlan!): PlanTotalPreviewModel!
@@ -620,6 +635,10 @@ enum ReportStatus {
 enum ReportType {
   product
   user
+}
+
+input RequestVerificationInput {
+  docs: [String!]
 }
 
 type ReviewModel {
@@ -830,6 +849,7 @@ type VehicleDetailModel {
 
 type VerificationModel {
   createdAt: DateTime!
+  docs: [String!]!
   id: ID!
   rejectedReason: String
   reviewedAt: DateTime

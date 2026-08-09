@@ -14,6 +14,7 @@ import {
   PlanActivationModel,
   PlanTotalPreviewModel,
 } from './dto/plan-activation.model';
+import { ProductModel } from '../products/models/product.model';
 import { BusinessContactModel } from './dto/business-contact.model';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -158,6 +159,25 @@ export class UsersResolver {
   @UseGuards(AdminGuard)
   async planActivations(@Args('userId') userId: string) {
     return this.usersService.planActivations(userId);
+  }
+
+  /**
+   * v2 (Fase 5.1). Set the seller's pinned-in-profile products in order.
+   * Passing an empty array clears the pin list. Gated by plan
+   * (Free/Basic 0, Star 4, Premium 10). Products must belong to the caller.
+   */
+  @Mutation(() => [ProductModel])
+  @UseGuards(GqlAuthGuard)
+  async setPinnedProducts(
+    @GetCurrentUserId() userId: string,
+    @Args({ name: 'productIds', type: () => [String] }) productIds: string[],
+  ) {
+    return this.usersService.setPinnedProducts(userId, productIds);
+  }
+
+  @Query(() => [ProductModel])
+  async pinnedProducts(@Args('userId') userId: string) {
+    return this.usersService.pinnedProducts(userId);
   }
 
   /**

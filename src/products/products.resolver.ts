@@ -2,6 +2,7 @@ import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { ProductModel, DailyCountModel } from './models/product.model';
+import { AutoBumpSlotModel } from './dto/auto-bump-slot.model';
 import { CreateProductInput } from './dto/create-product.input';
 import { UpdateProductInput } from './dto/update-product.input';
 import { SearchProductsInput } from './dto/search-products.input';
@@ -171,5 +172,25 @@ export class ProductsResolver {
     @Args('days', { type: () => Int, nullable: true }) days?: number,
   ) {
     return this.service.boostProduct(id, days ?? 7, adminId);
+  }
+
+  /**
+   * v2 (Fase 5). Seller sets which of their products the auto-bump cron will
+   * re-stamp on the plan's cadence. Cadence is derived from the seller's plan
+   * (Star = WEEKLY 3 slots, Premium = DAILY 5 slots). Empty array clears.
+   */
+  @Mutation(() => [AutoBumpSlotModel])
+  @UseGuards(GqlAuthGuard)
+  async setAutoBumpSlots(
+    @GetCurrentUserId() sellerId: string,
+    @Args({ name: 'productIds', type: () => [String] }) productIds: string[],
+  ) {
+    return this.service.setAutoBumpSlots(sellerId, productIds);
+  }
+
+  @Query(() => [AutoBumpSlotModel])
+  @UseGuards(GqlAuthGuard)
+  async myAutoBumpSlots(@GetCurrentUserId() sellerId: string) {
+    return this.service.autoBumpSlots(sellerId);
   }
 }

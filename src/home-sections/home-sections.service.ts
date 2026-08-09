@@ -376,4 +376,64 @@ export class HomeSectionsService {
       );
     }
   }
+
+  /**
+   * v2 (Fase 5.4). Flattened, interleaved product list for the home "Tiendas
+   * Premium" carousel. Reads today's `PremiumCarouselDay` rows (populated by
+   * `PremiumCarouselCron`) and returns them round-robin so consecutive tiles
+   * come from different sellers instead of clustering by vendor.
+   *
+   * Products whose status is no longer 'active' when the query runs are
+   * dropped from the output — the cron caches ids, but visibility is
+   * re-checked on read.
+   */
+  async premiumCarousel(take = 30) {
+    const today = startOfUtcDay(new Date());
+    const rows = await this.prisma.premiumCarouselDay.findMany({
+      where: { day: today },
+    });
+    if (rows.length === 0) return [];
+
+    const flatIds: string[] = interleaveByVendor(
+      rows.map((r) => r.productIds),
+    ).slice(0, take);
+    if (flatIds.length === 0) return [];
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: flatIds }, status: 'active' },
+      include: {
+        seller: true,
+        category: { include: { parent: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+
+    // Preserve the interleaved order — findMany returns unordered.
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return flatIds
+      .map((id) => byId.get(id))
+      .filter((p): p is (typeof products)[number] => !!p);
+  }
+}
+
+function startOfUtcDay(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
+}
+
+/**
+ * Round-robin merge across N lists: takes the first item of every list, then
+ * the second of every list, and so on. Empty slots collapse gracefully, so a
+ * seller with fewer than the max products doesn't create gaps.
+ */
+function interleaveByVendor<T>(lists: T[][]): T[] {
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  const out: T[] = [];
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      if (i < list.length) out.push(list[i]);
+    }
+  }
+  return out;
 }
