@@ -392,11 +392,47 @@ export class HomeSectionsService {
     const rows = await this.prisma.premiumCarouselDay.findMany({
       where: { day: today },
     });
-    if (rows.length === 0) return [];
 
-    const flatIds: string[] = interleaveByVendor(
-      rows.map((r) => r.productIds),
-    ).slice(0, take);
+    // v2 Fase 11.5 fallback: si el cron no corrió todavía para hoy (deploy
+    // reciente, servidor recién arrancado, DST), computamos on-the-fly con
+    // el mismo cap 3-por-vendedor. Sin persistir — es responsabilidad del
+    // cron. Sin esto, el carrusel se vería vacío hasta el próximo tick del
+    // cron a 00:00 GMT+1, lo que confunde a QA y al usuario final.
+    let vendorProductIds: string[][];
+    if (rows.length === 0) {
+      const premiumUsers = await this.prisma.user.findMany({
+        where: {
+          plan: 'PREMIUM',
+          suspended: false,
+          OR: [
+            { planExpiresAt: null },
+            { planExpiresAt: { gt: new Date() } },
+          ],
+        },
+        select: {
+          id: true,
+          products: {
+            where: { status: 'active' },
+            orderBy: { createdAt: 'desc' },
+            take: 3, // v2 Fase 11.5 — cap 3 por vendedor incluso sin cron
+            select: { id: true },
+          },
+        },
+      });
+      vendorProductIds = premiumUsers
+        .map((u) => u.products.map((p) => p.id))
+        .filter((ids) => ids.length > 0);
+    } else {
+      // Cap defensivo: la fila del cron ya viene con máximo 3, pero forzarlo
+      // aquí protege contra migraciones futuras que ampliaran el pool sin
+      // actualizar el consumidor.
+      vendorProductIds = rows.map((r) => r.productIds.slice(0, 3));
+    }
+
+    const flatIds: string[] = interleaveByVendor(vendorProductIds).slice(
+      0,
+      take,
+    );
     if (flatIds.length === 0) return [];
 
     const products = await this.prisma.product.findMany({
