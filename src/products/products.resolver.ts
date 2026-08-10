@@ -1,12 +1,14 @@
-import { Resolver, Query, Mutation, Args, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, Int, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { ProductModel, DailyCountModel } from './models/product.model';
 import { AutoBumpSlotModel } from './dto/auto-bump-slot.model';
+import { BoostQuotaModel } from './dto/boost-quota.model';
 import { CreateProductInput } from './dto/create-product.input';
 import { UpdateProductInput } from './dto/update-product.input';
 import { SearchProductsInput } from './dto/search-products.input';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
+import { OptionalGqlAuthGuard } from '../auth/guards/optional-gql-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { GetCurrentUserId } from '../auth/decorators/current-user.decorator';
 
@@ -39,8 +41,12 @@ export class ProductsResolver {
   }
 
   @Query(() => [ProductModel])
-  async searchProducts(@Args('input') input: SearchProductsInput) {
-    return this.service.search(input);
+  @UseGuards(OptionalGqlAuthGuard)
+  async searchProducts(
+    @Args('input') input: SearchProductsInput,
+    @Context() ctx: any,
+  ) {
+    return this.service.search(input, ctx?.req?.user?.id ?? null);
   }
 
   @Query(() => [ProductModel])
@@ -162,6 +168,22 @@ export class ProductsResolver {
     @Args('id') id: string,
   ) {
     return this.service.bumpProduct(id, adminId);
+  }
+
+  @Query(() => BoostQuotaModel)
+  @UseGuards(GqlAuthGuard)
+  async myBoostQuota(@GetCurrentUserId() sellerId: string) {
+    return this.service.myBoostQuota(sellerId);
+  }
+
+  @Mutation(() => ProductModel)
+  @UseGuards(GqlAuthGuard)
+  async boostMyProduct(
+    @GetCurrentUserId() sellerId: string,
+    @Args('id') id: string,
+    @Args('days', { type: () => Int, nullable: true }) days?: number,
+  ) {
+    return this.service.boostMyProduct(id, sellerId, days ?? 7);
   }
 
   @Mutation(() => ProductModel)

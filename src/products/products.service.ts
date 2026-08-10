@@ -11,14 +11,32 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductInput } from './dto/create-product.input';
 import { UpdateProductInput } from './dto/update-product.input';
 import { SearchProductsInput } from './dto/search-products.input';
-import { Prisma } from '@prisma/client';
+import { MediaType, Prisma } from '@prisma/client';
 import { NotificationEvents } from '../notifications/notifications.events';
 import { EmailEvents, BoostReceiptEvent } from '../email/email.events';
-import { PLAN_LIMITS, BOOST_PRICE, activePlan } from '../common/plan-limits';
+import {
+  PLAN_LIMITS,
+  BOOST_PRICES,
+  type BoostDuration,
+  activePlan,
+} from '../common/plan-limits';
 import { UserPlan } from '../users/dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../upload/storage.service';
-import { MediaType } from '@prisma/client';
+
+type BoostBilling = {
+  plan: UserPlan;
+  duration: BoostDuration;
+  basePrice: number;
+  amount: number;
+  included: boolean;
+  includedPerMonth: number;
+  usedThisMonth: number;
+  remainingThisMonth: number;
+  extraDiscountPct: number;
+  cycleStartsAt: Date;
+  cycleEndsAt: Date;
+};
 
 /** Normalize either legacy `imageUrls` (all images) or the newer
  *  `mediaItems` (images + videos with thumbnails) into a single array of
@@ -684,15 +702,24 @@ export class ProductsService {
       select: { viewedAt: true },
     });
 
+    // Bucket por fecha LOCAL. Con toISOString() (UTC) los eventos de hoy caían
+    // fuera de rango en servidores TZ>UTC porque `since` local ≠ UTC midnight.
+    const localKey = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
     const buckets = new Map<string, number>();
     for (let i = 0; i < days; i++) {
       const d = new Date(since);
       d.setDate(since.getDate() + i);
-      buckets.set(d.toISOString().slice(0, 10), 0);
+      buckets.set(localKey(d), 0);
     }
     for (const r of rows) {
-      const key = r.viewedAt.toISOString().slice(0, 10);
-      if (buckets.has(key)) buckets.set(key, buckets.get(key) + 1);
+      const key = localKey(r.viewedAt);
+      if (buckets.has(key)) buckets.set(key, buckets.get(key)! + 1);
     }
     return [...buckets.entries()].map(([date, count]) => ({ date, count }));
   }
@@ -707,10 +734,60 @@ export class ProductsService {
     return product;
   }
 
+  async myBoostQuota(sellerId: string) {
+    return this.boostQuotaFor(sellerId);
+  }
+
+  async boostMyProduct(id: string, sellerId: string, days = 7) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Anuncio no encontrado');
+    if (product.sellerId !== sellerId) {
+      throw new ForbiddenException(
+        'No tienes permiso para destacar este anuncio',
+      );
+    }
+
+    const duration = normalizeBoostDuration(days);
+    const billing = await this.calculateBoostBilling(sellerId, duration);
+    if (!billing.included) {
+      throw new BadRequestException(
+        `Ya usaste tus ${billing.includedPerMonth} destacados incluidos este mes. Este destacado cuesta ${billing.amount} XAF${billing.extraDiscountPct > 0 ? ' con descuento aplicado' : ''}.`,
+      );
+    }
+
+    return this.activateBoost(id, duration, billing, null);
+  }
+
   async boostProduct(id: string, days = 7, adminId?: string) {
+    const duration = normalizeBoostDuration(days);
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Anuncio no encontrado');
+
+    const billing = await this.calculateBoostBilling(product.sellerId, duration);
+    return this.activateBoost(id, duration, billing, adminId ?? null);
+  }
+
+  private async activateBoost(
+    id: string,
+    duration: BoostDuration,
+    billing: BoostBilling,
+    adminId: string | null,
+  ) {
+    const days = Number(duration.replace('d', ''));
     const now = new Date();
-    const until = new Date(now);
+    const previous = await this.prisma.product.findUnique({ where: { id } });
+    if (!previous) throw new NotFoundException('Anuncio no encontrado');
+    if (previous.status !== 'active') {
+      throw new BadRequestException('Solo puedes destacar anuncios activos.');
+    }
+
+    const startsFrom =
+      previous.boostedUntil && previous.boostedUntil > now
+        ? previous.boostedUntil
+        : now;
+    const until = new Date(startsFrom);
     until.setDate(until.getDate() + days);
+
     const product = await this.prisma.product.update({
       where: { id },
       data: { boostedUntil: until, bumpedAt: now },
@@ -724,14 +801,22 @@ export class ProductsService {
       boostedUntil: until,
     });
 
-    // Boosts are sold manually (WhatsApp) — activating one IS the payment.
+    const quotaLabel = billing.included
+      ? `incluido ${billing.usedThisMonth + 1}/${billing.includedPerMonth}`
+      : billing.extraDiscountPct > 0
+        ? `extra -${Math.round(billing.extraDiscountPct * 100)}%`
+        : 'extra';
+
+    // Boost activations are written to the manual ledger. Amount 0 means the
+    // seller consumed one of the monthly boosts included in their plan.
     const payment = await this.prisma.payment.create({
       data: {
         userId: product.sellerId,
-        amount: BOOST_PRICE,
+        amount: billing.amount,
         concept: 'boost',
+        note: `${duration} ${quotaLabel}`,
         productId: product.id,
-        createdById: adminId ?? null,
+        createdById: adminId,
       },
     });
 
@@ -751,7 +836,7 @@ export class ProductsService {
       'boost',
       'product',
       id,
-      `${days} días — ${product.title}`,
+      `${days} días — ${quotaLabel} — ${billing.amount} XAF — ${product.title}`,
     );
     return product;
   }
@@ -944,6 +1029,63 @@ export class ProductsService {
     return result.count;
   }
 
+  private async boostQuotaFor(sellerId: string, now = new Date()) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: {
+        plan: true,
+        planStartedAt: true,
+        planExpiresAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const plan = activePlan(user);
+    const limits = PLAN_LIMITS[plan];
+    const { startsAt, endsAt } = currentBoostCycle(user.planStartedAt, now);
+    const usedThisMonth = await this.prisma.payment.count({
+      where: {
+        userId: sellerId,
+        concept: 'boost',
+        createdAt: { gte: startsAt, lt: endsAt },
+      },
+    });
+
+    return {
+      plan,
+      includedPerMonth: limits.includedBoostsPerMonth,
+      usedThisMonth,
+      remainingThisMonth: Math.max(
+        limits.includedBoostsPerMonth - usedThisMonth,
+        0,
+      ),
+      extraDiscountPct: limits.extraBoostDiscountPct,
+      cycleStartsAt: startsAt,
+      cycleEndsAt: endsAt,
+    };
+  }
+
+  private async calculateBoostBilling(
+    sellerId: string,
+    duration: BoostDuration,
+    now = new Date(),
+  ): Promise<BoostBilling> {
+    const quota = await this.boostQuotaFor(sellerId, now);
+    const basePrice = BOOST_PRICES[duration];
+    const included = quota.remainingThisMonth > 0;
+    const amount = included
+      ? 0
+      : Math.round(basePrice * (1 - quota.extraDiscountPct));
+
+    return {
+      ...quota,
+      duration,
+      basePrice,
+      amount,
+      included,
+    };
+  }
+
   private activePlan(
     user: { plan: string; planExpiresAt: Date | null } | null,
   ): UserPlan {
@@ -963,4 +1105,47 @@ function effectivePrice(
   const base = Number(price);
   if (!discount || discount <= 0) return base;
   return Number((base * (1 - discount / 100)).toFixed(2));
+}
+
+function normalizeBoostDuration(days: number): BoostDuration {
+  if (days === 3 || days === 7 || days === 30) return `${days}d`;
+  throw new BadRequestException(
+    'Duración de destacado no válida. Usa 3, 7 o 30 días.',
+  );
+}
+
+function currentBoostCycle(planStartedAt: Date | null, now: Date) {
+  let startsAt = planStartedAt ? new Date(planStartedAt) : new Date(now);
+  if (!planStartedAt || startsAt > now) {
+    startsAt.setUTCDate(1);
+    startsAt.setUTCHours(0, 0, 0, 0);
+  } else {
+    while (true) {
+      const next = addUtcMonths(startsAt, 1);
+      if (next > now) break;
+      startsAt = next;
+    }
+  }
+  const endsAt = addUtcMonths(startsAt, 1);
+  return { startsAt, endsAt };
+}
+
+function addUtcMonths(date: Date, months: number) {
+  const targetMonth = date.getUTCMonth() + months;
+  const targetYear = date.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const lastDay = new Date(
+    Date.UTC(targetYear, normalizedMonth + 1, 0),
+  ).getUTCDate();
+  return new Date(
+    Date.UTC(
+      targetYear,
+      normalizedMonth,
+      Math.min(date.getUTCDate(), lastDay),
+      date.getUTCHours(),
+      date.getUTCMinutes(),
+      date.getUTCSeconds(),
+      date.getUTCMilliseconds(),
+    ),
+  );
 }

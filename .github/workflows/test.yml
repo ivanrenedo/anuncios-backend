@@ -12,14 +12,13 @@ on:
       - '**.md'
       - '.gitignore'
 
-# One concurrent test run per branch — a rebase-push doesn't queue two.
 concurrency:
-  group: test-${{ github.ref }}
+  group: test-backend-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   unit:
-    name: Unit tests
+    name: Build and unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,16 +30,15 @@ jobs:
 
       - run: npm ci
 
-      # Prisma generate is required before the tsc transform runs — @prisma/client
-      # types come out of `node_modules/.prisma/client` and don't ship in the
-      # published package.
       - run: npx prisma generate
 
-      # `--coverage` triggers the coverageThreshold gate: PR fails if any
-      # threshold in package.json → jest.coverageThreshold is not met.
-      - run: npm test -- --ci --coverage --reporters=default
+      - name: Build
+        run: npm run build
 
-      - name: Upload coverage report (lcov)
+      - name: Unit tests and schema snapshot
+        run: npm test -- --ci --coverage --reporters=default
+
+      - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -53,8 +51,6 @@ jobs:
     name: Integration tests
     runs-on: ubuntu-latest
     services:
-      # Same major as production (postgres:16-alpine). The image bundles unaccent
-      # and pg_trgm, so no extra install step is needed.
       postgres:
         image: postgres:16-alpine
         env:
@@ -69,8 +65,6 @@ jobs:
           --health-timeout 3s
           --health-retries 5
     env:
-      # The test helpers default to this URL if TEST_DATABASE_URL is unset,
-      # but pin it explicitly so a helper refactor doesn't silently drift.
       TEST_DATABASE_URL: postgres://postgres:admin@localhost:5432/postgres?schema=marketplace_test
     steps:
       - uses: actions/checkout@v4

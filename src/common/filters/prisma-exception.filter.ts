@@ -4,6 +4,7 @@ import {
   ConflictException,
   HttpException,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -20,12 +21,26 @@ import { Prisma } from '@prisma/client';
  */
 @Catch(Prisma.PrismaClientKnownRequestError, Prisma.PrismaClientValidationError)
 export class PrismaExceptionFilter extends BaseExceptionFilter {
+  private readonly logger = new Logger(PrismaExceptionFilter.name);
+
   catch(
     exception:
       | Prisma.PrismaClientKnownRequestError
       | Prisma.PrismaClientValidationError,
     host: ArgumentsHost,
   ) {
+    // Log every Prisma error before mapping — the user-facing message
+    // deliberately hides the underlying cause, so without this line the only
+    // trace left of a schema drift or a missing SQL function is a generic
+    // "No se pudo completar la operación" toast on the client.
+    const code =
+      exception instanceof Prisma.PrismaClientKnownRequestError
+        ? exception.code
+        : 'ValidationError';
+    this.logger.error(
+      `Prisma error ${code}: ${exception.message.replace(/\s+/g, ' ').trim()}`,
+    );
+
     const httpException = this.toHttpException(exception);
 
     // BaseExceptionFilter only knows how to reply to a real HTTP request. In a
@@ -75,6 +90,25 @@ export class PrismaExceptionFilter extends BaseExceptionFilter {
         return new ConflictException(
           'La operación viola una relación requerida entre registros.',
         );
+      // Raw query failure — usually a missing SQL function, extension, or
+      // column referenced by `$queryRaw`. The underlying Postgres message is
+      // already logged above; in non-production surface it so devs don't have
+      // to tail the server to figure out what broke.
+      case 'P2010': {
+        const isProd = process.env.NODE_ENV === 'production';
+        if (isProd) {
+          return new InternalServerErrorException(
+            'No se pudo completar la operación. Inténtalo de nuevo.',
+          );
+        }
+        const meta = exception.meta as
+          | { code?: string; message?: string }
+          | undefined;
+        const detail = meta?.message ?? exception.message;
+        return new InternalServerErrorException(
+          `Error de base de datos (${meta?.code ?? 'P2010'}): ${detail}`,
+        );
+      }
       default:
         return new InternalServerErrorException(
           'No se pudo completar la operación. Inténtalo de nuevo.',

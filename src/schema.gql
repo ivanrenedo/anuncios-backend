@@ -57,6 +57,16 @@ type AutoBumpSlotModel {
   userId: String!
 }
 
+type BoostQuotaModel {
+  cycleEndsAt: DateTime!
+  cycleStartsAt: DateTime!
+  extraDiscountPct: Float!
+  includedPerMonth: Int!
+  plan: UserPlan!
+  remainingThisMonth: Int!
+  usedThisMonth: Int!
+}
+
 input BroadcastInput {
   avatar: String
   body: String
@@ -337,6 +347,7 @@ type Mutation {
   adminUpdateProduct(id: String!, input: UpdateProductInput!): ProductModel!
   adminUpdateUser(id: String!, input: AdminUpdateUserInput!): UserModel!
   approveVerification(id: String!): VerificationModel!
+  boostMyProduct(days: Int, id: String!): ProductModel!
   boostProduct(days: Int, id: String!): ProductModel!
   bumpProduct(id: String!): ProductModel!
   changePinWithOtp(input: ChangePinInput!): OtpResponse!
@@ -583,6 +594,7 @@ type Query {
   isFollowing(userId: String!): Boolean!
   me: UserModel
   myAutoBumpSlots: [AutoBumpSlotModel!]!
+  myBoostQuota: BoostQuotaModel!
   myFavorites: [FavoriteModel!]!
   mySavedSearches: [SavedSearchModel!]!
   myVerificationRequest: VerificationModel
