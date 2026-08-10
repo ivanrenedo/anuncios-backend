@@ -300,13 +300,23 @@ export class EmailCron {
         },
         select: { newPlan: true },
       }),
+      // v2 — el resumen semanal es un digest de moderación (reports,
+      // verificaciones, MRR, nuevos users). Antes se enviaba a cualquier
+      // usuario con rol asignado; el panel puede tener roles operacionales
+      // (moderador, editor…) que no deberían recibir métricas de negocio.
+      // Ahora sólo ADMIN y SUPER_ADMIN (normalizados como en super-admin.guard).
       this.prisma.user.findMany({
         where: {
           permission: 'GRANTED',
           suspended: false,
-          rolId: { not: null },
+          rol: { isNot: null },
         },
-        select: { id: true, name: true, email: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          rol: { select: { label: true } },
+        },
       }),
     ]);
 
@@ -319,13 +329,20 @@ export class EmailCron {
       0,
     );
 
+    // Filtro final in-JS: normaliza el label (mayúsculas + `_`) igual que
+    // super-admin.guard para tolerar 'admin', 'Admin', 'super admin', etc.
+    const ALLOWED_LABELS = new Set(['ADMIN', 'SUPER_ADMIN']);
+    const eligibleAdmins = admins.filter((a: any) =>
+      ALLOWED_LABELS.has(normalizeRoleLabel(a.rol?.label)),
+    );
+
     this.logger.log(
-      `adminWeeklySummary cron: ${admins.length} admin(s), ${pendingReports} pending report(s)`,
+      `adminWeeklySummary cron: ${eligibleAdmins.length}/${admins.length} recipient(s), ${pendingReports} pending report(s)`,
     );
     const weekLabel = fmtDateRange(weekStart, now);
     const isoWeek = isoWeekKey(now);
 
-    for (const a of admins) {
+    for (const a of eligibleAdmins) {
       await this.enqueue({
         toEmail: a.email,
         userId: a.id,
@@ -370,6 +387,17 @@ function fmtDateRange(start: Date, end: Date): string {
   });
   const e = end.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   return `${s} – ${e}`;
+}
+
+/**
+ * Normaliza el label del rol al mismo formato que super-admin.guard
+ * (mayúsculas + `_`). Tolera 'admin', 'Admin', 'super admin', 'super-admin'…
+ */
+function normalizeRoleLabel(label?: string | null): string {
+  return (label ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
 }
 
 /** Stable ISO week key like "2026-W31" — used to dedupe weekly digests so

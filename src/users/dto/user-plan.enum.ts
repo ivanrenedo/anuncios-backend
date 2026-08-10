@@ -2,6 +2,7 @@ import { registerEnumType } from '@nestjs/graphql';
 
 export enum UserPlan {
   FREE = 'FREE',
+  BASIC = 'BASIC',
   STAR = 'STAR',
   PREMIUM = 'PREMIUM',
 }

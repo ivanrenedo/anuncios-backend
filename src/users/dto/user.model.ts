@@ -1,5 +1,6 @@
 import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { PermissionAcces } from './permission.enum';
+import { PlanCycle } from './plan-cycle.enum';
 import { UserPlan } from './user-plan.enum';
 
 @ObjectType()
@@ -43,6 +44,12 @@ export class UserModel {
   @Field(() => UserPlan)
   plan: UserPlan;
 
+  @Field(() => PlanCycle)
+  planCycle: PlanCycle;
+
+  @Field({ nullable: true })
+  planStartedAt?: Date;
+
   @Field({ nullable: true })
   planExpiresAt?: Date;
 
@@ -65,6 +72,10 @@ export class UserModel {
 
   @Field()
   isBusiness: boolean;
+
+  /** Set when a Premium business verification was approved; cleared on revoke. */
+  @Field({ nullable: true })
+  businessVerifiedAt?: Date;
 
   @Field()
   notifMessages: boolean;

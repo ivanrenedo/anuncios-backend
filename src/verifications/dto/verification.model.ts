@@ -13,6 +13,10 @@ export class VerificationModel {
   @Field(() => VerificationStatus)
   status: VerificationStatus;
 
+  /** URLs of documents the user submitted with the request. */
+  @Field(() => [String])
+  docs: string[];
+
   @Field({ nullable: true })
   rejectedReason?: string;
 

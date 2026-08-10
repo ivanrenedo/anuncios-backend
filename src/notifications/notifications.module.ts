@@ -6,6 +6,7 @@ import { NotificationsAdminResolver } from './notifications.admin.resolver';
 import { PushService } from './push.service';
 import { NotificationsProcessor } from './notifications.processor';
 import { NotificationsListener } from './notifications.listener';
+import { FollowerNotifyCron } from './follower-notify.cron';
 import { pubSubProvider } from './providers/pubsub.provider';
 
 /**
@@ -32,6 +33,7 @@ const NOTIFICATIONS_QUEUE = BullModule.registerQueue({
     PushService,
     NotificationsProcessor,
     NotificationsListener,
+    FollowerNotifyCron,
     pubSubProvider,
   ],
   exports: [NotificationsService, PushService],

@@ -28,10 +28,20 @@ model User {
   permission      PermissionAcces @default(GRANTED)
   themePreference String          @default("system") @map("theme_preference") @db.VarChar(10)
   plan            UserPlan        @default(FREE)
+  planCycle       PlanCycle       @default(MONTHLY) @map("plan_cycle")
+  planStartedAt   DateTime?       @map("plan_started_at")
   planExpiresAt   DateTime?       @map("plan_expires_at")
   suspended       Boolean         @default(false)
   suspendedReason String?         @map("suspended_reason")
   isBusiness      Boolean         @default(false) @map("is_business")
+  /// Set when a manual business verification is approved. Backs the 👑 badge
+  /// and the "verified" filter. Cleared to null if the verification is later
+  /// revoked.
+  businessVerifiedAt   DateTime?  @map("business_verified_at")
+  /// Rolling median (minutes) between a buyer contacting the seller and the
+  /// seller's first outbound WA/tel click. Backs the "Responde rápido" badge
+  /// for Premium sellers. Recomputed by a nightly cron.
+  responseTimeMinutes  Int?       @map("response_time_minutes")
   lastSeenAt      DateTime?       @map("last_seen_at")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
@@ -55,6 +65,12 @@ model User {
   verificationsReviewed VerificationRequest[] @relation("VerificationReviewer")
   planChanges           PlanChange[]          @relation("PlanChangeUser")
   planChangesBy         PlanChange[]          @relation("PlanChangeAdmin")
+  planActivations       PlanActivation[]      @relation("PlanActivationUser")
+  planActivationsByAdmin PlanActivation[]     @relation("PlanActivationAdmin")
+  pinnedProducts        PinnedProduct[]
+  autoBumpSlots         AutoBumpSlot[]
+  premiumCarouselDays   PremiumCarouselDay[]
+  followerNotifyBatches FollowerNotifyBatch[]
   savedSearches         SavedSearch[]
   payments              Payment[]             @relation("PaymentUser")
   paymentsCreated       Payment[]             @relation("PaymentAdmin")
@@ -196,16 +212,23 @@ model Product {
   impressions    Int           @default(0)
   bumpedAt       DateTime      @default(now()) @map("bumped_at")
   boostedUntil   DateTime?     @map("boosted_until")
+  /// Set when the seller lowers the price. While `now() < priceReducedUntil`
+  /// the product shows the "Rebajado hoy" chip (48h window, Estrella/Premium
+  /// only). Cleared automatically on any subsequent price update that is not
+  /// a further reduction.
+  priceReducedUntil DateTime?  @map("price_reduced_until")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  seller     User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  category   Category           @relation(fields: [categoryId], references: [id])
-  images     ProductImage[]
-  attributes ProductAttribute[]
-  favorites  Favorite[]
-  reports    Report[]
-  viewLogs   ProductView[]
+  seller       User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category     Category           @relation(fields: [categoryId], references: [id])
+  images       ProductImage[]
+  attributes   ProductAttribute[]
+  favorites    Favorite[]
+  reports      Report[]
+  viewLogs     ProductView[]
+  pinnedBy     PinnedProduct[]
+  autoBumpSlot AutoBumpSlot?
 
   marketplaceDetail MarketplaceDetail?
   vehicleDetail     VehicleDetail?
@@ -215,6 +238,7 @@ model Product {
 
   @@index([bumpedAt])
   @@index([boostedUntil])
+  @@index([priceReducedUntil])
   @@map("products")
 }
 
@@ -226,7 +250,14 @@ model ProductView {
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([productId, viewerKey])
+  // v2 Fase 12 — el unique constraint (productId, viewerKey) se retiró para
+  // que el chart "Visitas últimos 7 días" cuente eventos reales (no visitantes
+  // únicos por última visita). El dedup de 6h ahora se resuelve con findFirst
+  // sobre el índice compuesto orderedBy viewedAt desc. La tabla puede crecer
+  // más rápido (una fila por visita >6h del mismo visitante); una limpieza
+  // periódica de rows >90d podría añadirse si el volumen lo justifica.
+  @@index([productId, viewerKey, viewedAt])
+  @@index([viewedAt])
   @@map("product_views")
 }
 
@@ -557,8 +588,19 @@ enum VerificationStatus {
 
 enum UserPlan {
   FREE
+  BASIC
   STAR
   PREMIUM
+}
+
+enum PlanCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum BumpCadence {
+  WEEKLY
+  DAILY
 }
 
 enum EmailTemplate {
@@ -587,6 +629,10 @@ model VerificationRequest {
   id             String             @id @default(uuid())
   userId         String             @map("user_id")
   status         VerificationStatus @default(pending)
+  /// URLs of uploaded documents (ID card, business licence, selfie holding ID,
+  /// etc.). Stored as an array so the admin sees the full evidence packet in
+  /// one place. Files themselves live in the upload bucket.
+  docs           String[]           @default([])
   rejectedReason String?            @map("rejected_reason")
   reviewedById   String?            @map("reviewed_by_id")
   reviewedAt     DateTime?          @map("reviewed_at")
@@ -595,6 +641,7 @@ model VerificationRequest {
   user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviewedBy User? @relation("VerificationReviewer", fields: [reviewedById], references: [id])
 
+  @@index([status, createdAt])
   @@map("verification_requests")
 }
 
@@ -613,4 +660,104 @@ model PlanChange {
 
   @@index([userId])
   @@map("plan_changes")
+}
+
+/// Manual plan activation with full pricing metadata. One row per activation:
+/// captures unit price, months, discount and total paid so the admin can
+/// reconstruct any past charge. Complements (does not replace) `PlanChange`
+/// (which stays as a lightweight audit log) and `Payment` (which stays as the
+/// revenue ledger). See docs/plans-v2-decisions.md.
+model PlanActivation {
+  id                 String   @id @default(uuid())
+  userId             String   @map("user_id")
+  plan               UserPlan
+  months             Int      @db.SmallInt
+  /// Unit price in XAF at the time of activation (snapshot). Not a foreign key
+  /// so a later PLAN_PRICES change never rewrites history.
+  unitPrice          Decimal  @map("unit_price") @db.Decimal(12, 2)
+  /// Discount applied as a fraction (0.05 = 5 %).
+  discountPct        Decimal  @map("discount_pct") @db.Decimal(5, 4)
+  totalPaid          Decimal  @map("total_paid") @db.Decimal(12, 2)
+  activatedByAdminId String?  @map("activated_by_admin_id")
+  activatedAt        DateTime @default(now()) @map("activated_at")
+  startsAt           DateTime @map("starts_at")
+  endsAt             DateTime @map("ends_at")
+  notes              String?  @db.VarChar(500)
+
+  user             User  @relation("PlanActivationUser", fields: [userId], references: [id], onDelete: Cascade)
+  activatedByAdmin User? @relation("PlanActivationAdmin", fields: [activatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([userId, activatedAt])
+  @@index([activatedAt])
+  @@map("plan_activations")
+}
+
+/// Products a seller has pinned to the top of their profile. Limits per plan:
+/// Estrella = 4, Premium = 10. Free and Basic have no pinned slots. `position`
+/// is a 0-indexed slot within the seller's profile; @@unique([userId, position])
+/// prevents two products in the same slot. Gaps between positions are allowed.
+model PinnedProduct {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  position  Int      @db.SmallInt
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, position])
+  @@unique([userId, productId])
+  @@map("pinned_products")
+}
+
+/// A product a seller has added to their auto-bump pool. The cron re-stamps
+/// `Product.bumpedAt` on the slot's cadence (Estrella = weekly, Premium =
+/// daily). Pool sizes: Estrella = 3, Premium = 5. Enforced at write time.
+model AutoBumpSlot {
+  id        String      @id @default(uuid())
+  userId    String      @map("user_id")
+  productId String      @unique @map("product_id")
+  cadence   BumpCadence
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("auto_bump_slots")
+}
+
+/// The 3 products picked for a Premium seller's slot in the home carousel on a
+/// given day. Written by the daily cron at 00:00 GMT+1 with a fairness rule so
+/// every active product appears >=2 days/week. History kept for at least 30
+/// days for audit.
+model PremiumCarouselDay {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  day        DateTime @db.Date
+  productIds String[] @map("product_ids")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([day])
+  @@map("premium_carousel_days")
+}
+
+/// One row per grouped push notification sent to a seller's followers about
+/// newly published products. Aggregator emits at most one batch per seller per
+/// 6h window (see docs/plans-v2-decisions.md). `productIds` is the set of
+/// products included in that batch.
+model FollowerNotifyBatch {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  batchedAt  DateTime @default(now()) @map("batched_at")
+  productIds String[] @map("product_ids")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, batchedAt])
+  @@map("follower_notify_batches")
 }
