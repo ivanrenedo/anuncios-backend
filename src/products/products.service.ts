@@ -209,14 +209,21 @@ export class ProductsService {
     if (input.query) {
       // Cap fetch well above any realistic first-page pagination — the exact
       // ordering (bumpedAt/price) is applied by Prisma below on this subset.
-      const matchingIds = await matchingIdsByText(
-        this.prisma,
-        input.query,
-        500,
-      );
-      // `id: { in: [] }` forces zero rows; the trigram fallback below may
-      // still add fuzzy matches.
-      where.id = { in: matchingIds };
+      // Si falta la extensión unaccent o los índices trigram (DB sin migración
+      // aplicada) el SQL crudo revienta — no queremos dejar el explore vacío
+      // por eso, así que caemos a un contains ILIKE plano sobre title.
+      try {
+        const matchingIds = await matchingIdsByText(
+          this.prisma,
+          input.query,
+          500,
+        );
+        // `id: { in: [] }` forces zero rows; the trigram fallback below may
+        // still add fuzzy matches.
+        where.id = { in: matchingIds };
+      } catch {
+        where.title = { contains: input.query, mode: 'insensitive' };
+      }
     }
     if (input.categoryId) {
       const children = await this.prisma.category.findMany({
