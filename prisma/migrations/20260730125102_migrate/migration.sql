@@ -32,19 +32,7 @@ CREATE TYPE "HomeSuggestionStatus" AS ENUM ('pending', 'accepted', 'dismissed');
 CREATE TYPE "VerificationStatus" AS ENUM ('pending', 'approved', 'rejected');
 
 -- CreateEnum
-CREATE TYPE "UserPlan" AS ENUM ('FREE', 'BASIC', 'STAR', 'PREMIUM');
-
--- CreateEnum
-CREATE TYPE "PlanCycle" AS ENUM ('MONTHLY', 'YEARLY');
-
--- CreateEnum
-CREATE TYPE "BumpCadence" AS ENUM ('WEEKLY', 'DAILY');
-
--- CreateEnum
-CREATE TYPE "EmailTemplate" AS ENUM ('pin_code', 'plan_activated', 'boost_receipt', 'verification_approved', 'verification_rejected', 'account_suspended', 'welcome', 'plan_expiring', 'plan_expired', 'activity_digest', 'comeback', 'admin_weekly_summary');
-
--- CreateEnum
-CREATE TYPE "EmailStatus" AS ENUM ('queued', 'sent', 'failed', 'bounced');
+CREATE TYPE "UserPlan" AS ENUM ('FREE', 'STAR', 'PREMIUM');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -68,37 +56,14 @@ CREATE TABLE "users" (
     "permission" "PermissionAcces" NOT NULL DEFAULT 'GRANTED',
     "theme_preference" VARCHAR(10) NOT NULL DEFAULT 'system',
     "plan" "UserPlan" NOT NULL DEFAULT 'FREE',
-    "plan_cycle" "PlanCycle" NOT NULL DEFAULT 'MONTHLY',
-    "plan_started_at" TIMESTAMP(3),
     "plan_expires_at" TIMESTAMP(3),
     "suspended" BOOLEAN NOT NULL DEFAULT false,
     "suspended_reason" TEXT,
-    "is_business" BOOLEAN NOT NULL DEFAULT false,
-    "business_verified_at" TIMESTAMP(3),
-    "response_time_minutes" INTEGER,
-    "last_seen_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
     "rolId" TEXT,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "email_logs" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT,
-    "to_email" VARCHAR(255) NOT NULL,
-    "template" "EmailTemplate" NOT NULL,
-    "subject" VARCHAR(200) NOT NULL,
-    "status" "EmailStatus" NOT NULL DEFAULT 'queued',
-    "provider_msg_id" VARCHAR(200),
-    "error" TEXT,
-    "dedupe_key" VARCHAR(200),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "sent_at" TIMESTAMP(3),
-
-    CONSTRAINT "email_logs_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -189,7 +154,6 @@ CREATE TABLE "products" (
     "impressions" INTEGER NOT NULL DEFAULT 0,
     "bumped_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "boosted_until" TIMESTAMP(3),
-    "price_reduced_until" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -437,7 +401,6 @@ CREATE TABLE "verification_requests" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "status" "VerificationStatus" NOT NULL DEFAULT 'pending',
-    "docs" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "rejected_reason" TEXT,
     "reviewed_by_id" TEXT,
     "reviewed_at" TIMESTAMP(3),
@@ -460,81 +423,11 @@ CREATE TABLE "plan_changes" (
     CONSTRAINT "plan_changes_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "plan_activations" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
-    "plan" "UserPlan" NOT NULL,
-    "months" SMALLINT NOT NULL,
-    "unit_price" DECIMAL(12,2) NOT NULL,
-    "discount_pct" DECIMAL(5,4) NOT NULL,
-    "total_paid" DECIMAL(12,2) NOT NULL,
-    "activated_by_admin_id" TEXT,
-    "activated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "starts_at" TIMESTAMP(3) NOT NULL,
-    "ends_at" TIMESTAMP(3) NOT NULL,
-    "notes" VARCHAR(500),
-
-    CONSTRAINT "plan_activations_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "pinned_products" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
-    "product_id" TEXT NOT NULL,
-    "position" SMALLINT NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "pinned_products_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "auto_bump_slots" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
-    "product_id" TEXT NOT NULL,
-    "cadence" "BumpCadence" NOT NULL,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "auto_bump_slots_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "premium_carousel_days" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
-    "day" DATE NOT NULL,
-    "product_ids" TEXT[],
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "premium_carousel_days_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "follower_notify_batches" (
-    "id" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
-    "batched_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "product_ids" TEXT[],
-
-    CONSTRAINT "follower_notify_batches_pkey" PRIMARY KEY ("id")
-);
-
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_google_id_key" ON "users"("google_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "email_logs_dedupe_key_key" ON "email_logs"("dedupe_key");
-
--- CreateIndex
-CREATE INDEX "email_logs_user_id_created_at_idx" ON "email_logs"("user_id", "created_at");
-
--- CreateIndex
-CREATE INDEX "email_logs_status_idx" ON "email_logs"("status");
 
 -- CreateIndex
 CREATE INDEX "saved_searches_user_id_idx" ON "saved_searches"("user_id");
@@ -556,9 +449,6 @@ CREATE INDEX "products_bumped_at_idx" ON "products"("bumped_at");
 
 -- CreateIndex
 CREATE INDEX "products_boosted_until_idx" ON "products"("boosted_until");
-
--- CreateIndex
-CREATE INDEX "products_price_reduced_until_idx" ON "products"("price_reduced_until");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "product_views_product_id_viewer_key_key" ON "product_views"("product_id", "viewer_key");
@@ -597,43 +487,10 @@ CREATE INDEX "otp_codes_user_id_purpose_idx" ON "otp_codes"("user_id", "purpose"
 CREATE INDEX "home_section_events_section_id_event_idx" ON "home_section_events"("section_id", "event");
 
 -- CreateIndex
-CREATE INDEX "verification_requests_status_created_at_idx" ON "verification_requests"("status", "created_at");
-
--- CreateIndex
 CREATE INDEX "plan_changes_user_id_idx" ON "plan_changes"("user_id");
-
--- CreateIndex
-CREATE INDEX "plan_activations_user_id_activated_at_idx" ON "plan_activations"("user_id", "activated_at");
-
--- CreateIndex
-CREATE INDEX "plan_activations_activated_at_idx" ON "plan_activations"("activated_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "pinned_products_user_id_position_key" ON "pinned_products"("user_id", "position");
-
--- CreateIndex
-CREATE UNIQUE INDEX "pinned_products_user_id_product_id_key" ON "pinned_products"("user_id", "product_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "auto_bump_slots_product_id_key" ON "auto_bump_slots"("product_id");
-
--- CreateIndex
-CREATE INDEX "auto_bump_slots_user_id_idx" ON "auto_bump_slots"("user_id");
-
--- CreateIndex
-CREATE INDEX "premium_carousel_days_day_idx" ON "premium_carousel_days"("day");
-
--- CreateIndex
-CREATE UNIQUE INDEX "premium_carousel_days_user_id_day_key" ON "premium_carousel_days"("user_id", "day");
-
--- CreateIndex
-CREATE INDEX "follower_notify_batches_user_id_batched_at_idx" ON "follower_notify_batches"("user_id", "batched_at");
 
 -- AddForeignKey
 ALTER TABLE "users" ADD CONSTRAINT "users_rolId_fkey" FOREIGN KEY ("rolId") REFERENCES "roles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "email_logs" ADD CONSTRAINT "email_logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "saved_searches" ADD CONSTRAINT "saved_searches_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -739,27 +596,3 @@ ALTER TABLE "plan_changes" ADD CONSTRAINT "plan_changes_user_id_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "plan_changes" ADD CONSTRAINT "plan_changes_changed_by_id_fkey" FOREIGN KEY ("changed_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "plan_activations" ADD CONSTRAINT "plan_activations_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "plan_activations" ADD CONSTRAINT "plan_activations_activated_by_admin_id_fkey" FOREIGN KEY ("activated_by_admin_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "pinned_products" ADD CONSTRAINT "pinned_products_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "pinned_products" ADD CONSTRAINT "pinned_products_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "auto_bump_slots" ADD CONSTRAINT "auto_bump_slots_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "auto_bump_slots" ADD CONSTRAINT "auto_bump_slots_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "premium_carousel_days" ADD CONSTRAINT "premium_carousel_days_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "follower_notify_batches" ADD CONSTRAINT "follower_notify_batches_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
