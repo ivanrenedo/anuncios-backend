@@ -241,6 +241,48 @@ export class ProductsService {
       if (input.priceMin) where.price.gte = input.priceMin;
       if (input.priceMax) where.price.lte = input.priceMax;
     }
+    const vehicleWhere: Prisma.VehicleDetailWhereInput = {};
+    const propertyWhere: Prisma.PropertyDetailWhereInput = {};
+    const relationalFilters: Prisma.ProductWhereInput[] = [];
+
+    if (input.engines?.length) {
+      vehicleWhere.engine = { in: input.engines };
+    }
+    if (input.transmissions?.length) {
+      vehicleWhere.transmission = { in: input.transmissions };
+    }
+    if (input.bedroomsMin && input.bedroomsMin > 0) {
+      propertyWhere.bedrooms = { gte: input.bedroomsMin };
+    }
+    if (input.bathroomsMin && input.bathroomsMin > 0) {
+      propertyWhere.bathrooms = { gte: input.bathroomsMin };
+    }
+    if (input.surfaceMin && input.surfaceMin > 0) {
+      propertyWhere.surface = { gte: input.surfaceMin };
+    }
+
+    if (Object.keys(vehicleWhere).length > 0) {
+      relationalFilters.push({ vehicleDetail: { is: vehicleWhere } });
+    }
+    if (Object.keys(propertyWhere).length > 0) {
+      relationalFilters.push({ propertyDetail: { is: propertyWhere } });
+    }
+    if (input.offerType) {
+      relationalFilters.push({
+        serviceDetail: { is: { offerType: input.offerType } },
+      });
+    }
+    if (input.operation) {
+      relationalFilters.push({
+        OR: [
+          { vehicleDetail: { is: { operation: input.operation } } },
+          { propertyDetail: { is: { operation: input.operation } } },
+        ],
+      });
+    }
+    if (relationalFilters.length > 0) {
+      where.AND = relationalFilters;
+    }
 
     const isPriceSort =
       input.sortBy === 'price_asc' || input.sortBy === 'price_desc';
