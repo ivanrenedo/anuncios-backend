@@ -14,6 +14,27 @@ export class SearchProductsInput {
   @Field({ nullable: true })
   condition?: string;
 
+  @Field({ nullable: true })
+  operation?: string;
+
+  @Field(() => [String], { nullable: true })
+  engines?: string[];
+
+  @Field(() => [String], { nullable: true })
+  transmissions?: string[];
+
+  @Field({ nullable: true })
+  offerType?: string;
+
+  @Field(() => Int, { nullable: true })
+  bedroomsMin?: number;
+
+  @Field(() => Int, { nullable: true })
+  bathroomsMin?: number;
+
+  @Field(() => Int, { nullable: true })
+  surfaceMin?: number;
+
   @Field(() => Float, { nullable: true })
   priceMin?: number;
 

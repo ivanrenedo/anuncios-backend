@@ -716,15 +716,22 @@ type SavedSearchModel {
 }
 
 input SearchProductsInput {
+  bathroomsMin: Int
+  bedroomsMin: Int
   categoryId: String
   city: String
   condition: String
+  engines: [String!]
+  offerType: String
+  operation: String
   priceMax: Float
   priceMin: Float
   query: String
   skip: Int = 0
   sortBy: String = "recent"
+  surfaceMin: Int
   take: Int = 20
+  transmissions: [String!]
 }
 
 type SearchTermStatModel {
