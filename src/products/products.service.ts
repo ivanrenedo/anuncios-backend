@@ -11,14 +11,32 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductInput } from './dto/create-product.input';
 import { UpdateProductInput } from './dto/update-product.input';
 import { SearchProductsInput } from './dto/search-products.input';
-import { Prisma } from '@prisma/client';
+import { MediaType, Prisma } from '@prisma/client';
 import { NotificationEvents } from '../notifications/notifications.events';
 import { EmailEvents, BoostReceiptEvent } from '../email/email.events';
-import { PLAN_LIMITS, BOOST_PRICE, activePlan } from '../common/plan-limits';
+import {
+  PLAN_LIMITS,
+  BOOST_PRICES,
+  type BoostDuration,
+  activePlan,
+} from '../common/plan-limits';
 import { UserPlan } from '../users/dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../upload/storage.service';
-import { MediaType } from '@prisma/client';
+
+type BoostBilling = {
+  plan: UserPlan;
+  duration: BoostDuration;
+  basePrice: number;
+  amount: number;
+  included: boolean;
+  includedPerMonth: number;
+  usedThisMonth: number;
+  remainingThisMonth: number;
+  extraDiscountPct: number;
+  cycleStartsAt: Date;
+  cycleEndsAt: Date;
+};
 
 /** Normalize either legacy `imageUrls` (all images) or the newer
  *  `mediaItems` (images + videos with thumbnails) into a single array of
@@ -181,7 +199,7 @@ export class ProductsService {
     });
   }
 
-  async search(input: SearchProductsInput) {
+  async search(input: SearchProductsInput, viewerId: string | null = null) {
     const where: Prisma.ProductWhereInput = { status: 'active' };
 
     // Text search: accent/case-insensitive across title, description and seller
@@ -191,14 +209,21 @@ export class ProductsService {
     if (input.query) {
       // Cap fetch well above any realistic first-page pagination — the exact
       // ordering (bumpedAt/price) is applied by Prisma below on this subset.
-      const matchingIds = await matchingIdsByText(
-        this.prisma,
-        input.query,
-        500,
-      );
-      // `id: { in: [] }` forces zero rows; the trigram fallback below may
-      // still add fuzzy matches.
-      where.id = { in: matchingIds };
+      // Si falta la extensión unaccent o los índices trigram (DB sin migración
+      // aplicada) el SQL crudo revienta — no queremos dejar el explore vacío
+      // por eso, así que caemos a un contains ILIKE plano sobre title.
+      try {
+        const matchingIds = await matchingIdsByText(
+          this.prisma,
+          input.query,
+          500,
+        );
+        // `id: { in: [] }` forces zero rows; the trigram fallback below may
+        // still add fuzzy matches.
+        where.id = { in: matchingIds };
+      } catch {
+        where.title = { contains: input.query, mode: 'insensitive' };
+      }
     }
     if (input.categoryId) {
       const children = await this.prisma.category.findMany({
@@ -215,6 +240,48 @@ export class ProductsService {
       where.price = {};
       if (input.priceMin) where.price.gte = input.priceMin;
       if (input.priceMax) where.price.lte = input.priceMax;
+    }
+    const vehicleWhere: Prisma.VehicleDetailWhereInput = {};
+    const propertyWhere: Prisma.PropertyDetailWhereInput = {};
+    const relationalFilters: Prisma.ProductWhereInput[] = [];
+
+    if (input.engines?.length) {
+      vehicleWhere.engine = { in: input.engines };
+    }
+    if (input.transmissions?.length) {
+      vehicleWhere.transmission = { in: input.transmissions };
+    }
+    if (input.bedroomsMin && input.bedroomsMin > 0) {
+      propertyWhere.bedrooms = { gte: input.bedroomsMin };
+    }
+    if (input.bathroomsMin && input.bathroomsMin > 0) {
+      propertyWhere.bathrooms = { gte: input.bathroomsMin };
+    }
+    if (input.surfaceMin && input.surfaceMin > 0) {
+      propertyWhere.surface = { gte: input.surfaceMin };
+    }
+
+    if (Object.keys(vehicleWhere).length > 0) {
+      relationalFilters.push({ vehicleDetail: { is: vehicleWhere } });
+    }
+    if (Object.keys(propertyWhere).length > 0) {
+      relationalFilters.push({ propertyDetail: { is: propertyWhere } });
+    }
+    if (input.offerType) {
+      relationalFilters.push({
+        serviceDetail: { is: { offerType: input.offerType } },
+      });
+    }
+    if (input.operation) {
+      relationalFilters.push({
+        OR: [
+          { vehicleDetail: { is: { operation: input.operation } } },
+          { propertyDetail: { is: { operation: input.operation } } },
+        ],
+      });
+    }
+    if (relationalFilters.length > 0) {
+      where.AND = relationalFilters;
     }
 
     const isPriceSort =
@@ -287,11 +354,15 @@ export class ProductsService {
     }
 
     // Search impressions: fire-and-forget so the search response never waits
-    // on the counter write.
-    if (products.length > 0) {
+    // on the counter write. Exclude the viewer's own listings — otherwise a
+    // seller browsing Explore inflates their own "Búsquedas" stat.
+    const impressionIds = viewerId
+      ? products.filter((p) => p.sellerId !== viewerId).map((p) => p.id)
+      : products.map((p) => p.id);
+    if (impressionIds.length > 0) {
       void this.prisma.product
         .updateMany({
-          where: { id: { in: products.map((p) => p.id) } },
+          where: { id: { in: impressionIds } },
           data: { impressions: { increment: 1 } },
         })
         .catch(() => {});
@@ -474,10 +545,18 @@ export class ProductsService {
 
     // Notify watchers only on an effective price drop. Effective price is the
     // listed price discounted by `discount` (%), so a change to either field
-    // can trigger it. Skipped entirely when the price didn't actually drop.
+    // can trigger it. Also stamps `priceReducedUntil` so the "Rebajado hoy"
+    // chip lights up for 48h (Star/Premium plans; gate lives in the frontend).
     const oldEffective = effectivePrice(product.price, product.discount);
     const newEffective = effectivePrice(updated.price, updated.discount);
     if (newEffective < oldEffective) {
+      const stamped = await this.prisma.product.update({
+        where: { id },
+        data: {
+          priceReducedUntil: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        },
+        include: FULL_INCLUDE,
+      });
       this.events.emit(NotificationEvents.ProductPriceChanged, {
         productId: updated.id,
         productTitle: updated.title,
@@ -485,6 +564,7 @@ export class ProductsService {
         newPrice: newEffective,
         sellerId: updated.sellerId,
       });
+      return stamped;
     }
     return updated;
   }
@@ -510,7 +590,9 @@ export class ProductsService {
   }
 
   async registerView(id: string, viewerKey?: string) {
-    // Without a visitor key we can't dedup — fall back to a plain increment.
+    // Sin viewerKey no podemos dedup — fallback a un increment simple sin
+    // fila de evento (no distorsiona el chart porque no hay identidad para
+    // agrupar; el contador Product.views sí refleja el tráfico anónimo).
     if (!viewerKey) {
       return this.prisma.product.update({
         where: { id },
@@ -518,22 +600,28 @@ export class ProductsService {
       });
     }
 
-    const WINDOW_MS = 6 * 60 * 60 * 1000; // one counted view per visitor / 6h
-    const existing = await this.prisma.productView.findUnique({
-      where: { productId_viewerKey: { productId: id, viewerKey } },
-    });
+    const WINDOW_MS = 6 * 60 * 60 * 1000;
     const now = new Date();
 
-    if (existing && now.getTime() - existing.viewedAt.getTime() < WINDOW_MS) {
-      // Same visitor viewed it recently (refresh, StrictMode double-mount,
-      // re-navigation…) — don't inflate the counter.
+    // v2 Fase 12 — dedup 6h por (product, viewer) SIN unique constraint:
+    // buscamos la última visita del viewer con findFirst y comparamos.
+    // Fuera de ventana → creamos un evento NUEVO (create, no upsert), para
+    // que el chart "Visitas últimos 7 días" cuente eventos reales, no
+    // visitantes únicos con timestamp de su última visita.
+    const lastView = await this.prisma.productView.findFirst({
+      where: { productId: id, viewerKey },
+      orderBy: { viewedAt: 'desc' },
+      select: { viewedAt: true },
+    });
+
+    if (lastView && now.getTime() - lastView.viewedAt.getTime() < WINDOW_MS) {
+      // Mismo visitante en menos de 6h (refresh, StrictMode double-mount,
+      // re-navigation…) — no inflar el contador y no crear evento.
       return this.prisma.product.findUnique({ where: { id } });
     }
 
-    await this.prisma.productView.upsert({
-      where: { productId_viewerKey: { productId: id, viewerKey } },
-      create: { productId: id, viewerKey, viewedAt: now },
-      update: { viewedAt: now },
+    await this.prisma.productView.create({
+      data: { productId: id, viewerKey, viewedAt: now },
     });
 
     return this.prisma.product.update({
@@ -663,15 +751,24 @@ export class ProductsService {
       select: { viewedAt: true },
     });
 
+    // Bucket por fecha LOCAL. Con toISOString() (UTC) los eventos de hoy caían
+    // fuera de rango en servidores TZ>UTC porque `since` local ≠ UTC midnight.
+    const localKey = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
     const buckets = new Map<string, number>();
     for (let i = 0; i < days; i++) {
       const d = new Date(since);
       d.setDate(since.getDate() + i);
-      buckets.set(d.toISOString().slice(0, 10), 0);
+      buckets.set(localKey(d), 0);
     }
     for (const r of rows) {
-      const key = r.viewedAt.toISOString().slice(0, 10);
-      if (buckets.has(key)) buckets.set(key, buckets.get(key) + 1);
+      const key = localKey(r.viewedAt);
+      if (buckets.has(key)) buckets.set(key, buckets.get(key)! + 1);
     }
     return [...buckets.entries()].map(([date, count]) => ({ date, count }));
   }
@@ -686,10 +783,60 @@ export class ProductsService {
     return product;
   }
 
+  async myBoostQuota(sellerId: string) {
+    return this.boostQuotaFor(sellerId);
+  }
+
+  async boostMyProduct(id: string, sellerId: string, days = 7) {
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Anuncio no encontrado');
+    if (product.sellerId !== sellerId) {
+      throw new ForbiddenException(
+        'No tienes permiso para destacar este anuncio',
+      );
+    }
+
+    const duration = normalizeBoostDuration(days);
+    const billing = await this.calculateBoostBilling(sellerId, duration);
+    if (!billing.included) {
+      throw new BadRequestException(
+        `Ya usaste tus ${billing.includedPerMonth} destacados incluidos este mes. Este destacado cuesta ${billing.amount} XAF${billing.extraDiscountPct > 0 ? ' con descuento aplicado' : ''}.`,
+      );
+    }
+
+    return this.activateBoost(id, duration, billing, null);
+  }
+
   async boostProduct(id: string, days = 7, adminId?: string) {
+    const duration = normalizeBoostDuration(days);
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('Anuncio no encontrado');
+
+    const billing = await this.calculateBoostBilling(product.sellerId, duration);
+    return this.activateBoost(id, duration, billing, adminId ?? null);
+  }
+
+  private async activateBoost(
+    id: string,
+    duration: BoostDuration,
+    billing: BoostBilling,
+    adminId: string | null,
+  ) {
+    const days = Number(duration.replace('d', ''));
     const now = new Date();
-    const until = new Date(now);
+    const previous = await this.prisma.product.findUnique({ where: { id } });
+    if (!previous) throw new NotFoundException('Anuncio no encontrado');
+    if (previous.status !== 'active') {
+      throw new BadRequestException('Solo puedes destacar anuncios activos.');
+    }
+
+    const startsFrom =
+      previous.boostedUntil && previous.boostedUntil > now
+        ? previous.boostedUntil
+        : now;
+    const until = new Date(startsFrom);
     until.setDate(until.getDate() + days);
+
     const product = await this.prisma.product.update({
       where: { id },
       data: { boostedUntil: until, bumpedAt: now },
@@ -703,14 +850,22 @@ export class ProductsService {
       boostedUntil: until,
     });
 
-    // Boosts are sold manually (WhatsApp) — activating one IS the payment.
+    const quotaLabel = billing.included
+      ? `incluido ${billing.usedThisMonth + 1}/${billing.includedPerMonth}`
+      : billing.extraDiscountPct > 0
+        ? `extra -${Math.round(billing.extraDiscountPct * 100)}%`
+        : 'extra';
+
+    // Boost activations are written to the manual ledger. Amount 0 means the
+    // seller consumed one of the monthly boosts included in their plan.
     const payment = await this.prisma.payment.create({
       data: {
         userId: product.sellerId,
-        amount: BOOST_PRICE,
+        amount: billing.amount,
         concept: 'boost',
+        note: `${duration} ${quotaLabel}`,
         productId: product.id,
-        createdById: adminId ?? null,
+        createdById: adminId,
       },
     });
 
@@ -730,7 +885,7 @@ export class ProductsService {
       'boost',
       'product',
       id,
-      `${days} días — ${product.title}`,
+      `${days} días — ${quotaLabel} — ${billing.amount} XAF — ${product.title}`,
     );
     return product;
   }
@@ -749,37 +904,28 @@ export class ProductsService {
     return product;
   }
 
+  /**
+   * v2 auto-bump: only re-stamps `bumpedAt` on products the seller has
+   * explicitly added to their `AutoBumpSlot` pool (Estrella: up to 3 slots
+   * weekly, Premium: up to 5 slots daily). Fase 5 exposes the mutation that
+   * lets sellers manage those slots; until then, an empty pool means the
+   * seller opted out (or hasn't opted in yet) and no auto-bump happens.
+   *
+   * Boosted products keep the legacy behavior — a paid boost is a hard
+   * commitment we honour independently of any slot pool.
+   */
   async autoBump() {
     const now = new Date();
-    const premiumCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const starCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    // Boosted products get re-bumped every hour so a paid 7-day boost stays
-    // at the top the entire window even as other sellers bump their own ads.
+    const weeklyCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const dailyCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const boostedCutoff = new Date(now.getTime() - 60 * 60 * 1000);
 
-    const premiumBumped = await this.prisma.product.updateMany({
-      where: {
-        status: 'active',
-        bumpedAt: { lt: premiumCutoff },
-        seller: {
-          plan: 'PREMIUM',
-          OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
-        },
-      },
-      data: { bumpedAt: now },
-    });
-
-    const starBumped = await this.prisma.product.updateMany({
-      where: {
-        status: 'active',
-        bumpedAt: { lt: starCutoff },
-        seller: {
-          plan: 'STAR',
-          OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
-        },
-      },
-      data: { bumpedAt: now },
-    });
+    const dailyBumped = await this.bumpBySlotCadence('DAILY', dailyCutoff, now);
+    const weeklyBumped = await this.bumpBySlotCadence(
+      'WEEKLY',
+      weeklyCutoff,
+      now,
+    );
 
     const boostedBumped = await this.prisma.product.updateMany({
       where: {
@@ -791,9 +937,201 @@ export class ProductsService {
     });
 
     return {
-      premiumBumped: premiumBumped.count,
-      starBumped: starBumped.count,
+      // Keep the legacy field names for compat with the cron logger; the
+      // semantic mapping today is Premium→DAILY, Star→WEEKLY.
+      premiumBumped: dailyBumped,
+      starBumped: weeklyBumped,
       boostedBumped: boostedBumped.count,
+    };
+  }
+
+  /**
+   * v2 (Fase 5). Replace the seller's auto-bump pool with the supplied ordered
+   * list of product ids. Cadence is derived from the seller's plan:
+   *   - Star    → WEEKLY, up to 3 slots
+   *   - Premium → DAILY, up to 5 slots
+   *   - Free/Basic → forbidden.
+   * Every id must belong to the caller and be active. Passing an empty array
+   * clears the pool.
+   */
+  async setAutoBumpSlots(sellerId: string, productIds: string[]) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: { id: true, plan: true, planExpiresAt: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const currentPlan = activePlan(user);
+    const { autoBumpSlots: max, autoBumpCadence: cadence } =
+      PLAN_LIMITS[currentPlan];
+    if (max === 0 || cadence == null) {
+      throw new BadRequestException(
+        'Tu plan actual no incluye auto-bump. Sube a Estrella o Premium.',
+      );
+    }
+    if (productIds.length > max) {
+      throw new BadRequestException(
+        `Tu plan permite hasta ${max} anuncios en el pool de auto-bump (recibí ${productIds.length}).`,
+      );
+    }
+    if (new Set(productIds).size !== productIds.length) {
+      throw new BadRequestException('Los IDs de anuncios no pueden repetirse.');
+    }
+
+    if (productIds.length > 0) {
+      const owned = await this.prisma.product.findMany({
+        where: {
+          id: { in: productIds },
+          sellerId,
+          status: 'active',
+        },
+        select: { id: true },
+      });
+      if (owned.length !== productIds.length) {
+        throw new BadRequestException(
+          'Todos los anuncios del pool deben ser tuyos y estar activos.',
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // v2 Fase 12 — bump inmediato de las adiciones netas:
+      // el cron corre cada hora pero solo re-stampea si bumpedAt < cutoff
+      // (24h DAILY, 7d WEEKLY). Sin este bump instantáneo, el vendedor añade
+      // un producto al pool y no ve nada durante horas → concluye "no
+      // funciona". Solo bumpeamos los NUEVOS del pool (diff), no todos, para
+      // no re-inflar en cada save.
+      const previous = await tx.autoBumpSlot.findMany({
+        where: { userId: sellerId },
+        select: { productId: true },
+      });
+      const previousIds = new Set(previous.map((s) => s.productId));
+      const netNew = productIds.filter((id) => !previousIds.has(id));
+
+      await tx.autoBumpSlot.deleteMany({ where: { userId: sellerId } });
+      for (const productId of productIds) {
+        await tx.autoBumpSlot.create({
+          data: { userId: sellerId, productId, cadence },
+        });
+      }
+
+      if (netNew.length > 0) {
+        await tx.product.updateMany({
+          where: { id: { in: netNew }, sellerId },
+          data: { bumpedAt: new Date() },
+        });
+      }
+    });
+
+    return this.autoBumpSlots(sellerId);
+  }
+
+  async autoBumpSlots(sellerId: string) {
+    return this.prisma.autoBumpSlot.findMany({
+      where: { userId: sellerId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        product: {
+          include: {
+            images: { orderBy: { sortOrder: 'asc' } },
+            category: { include: { parent: true } },
+          },
+        },
+      },
+    });
+  }
+
+  private async bumpBySlotCadence(
+    cadence: 'DAILY' | 'WEEKLY',
+    cutoff: Date,
+    now: Date,
+  ): Promise<number> {
+    // Two-step (find IDs, then updateMany) because Prisma does not support
+    // filtering by a nested relation existence combined with an aggregate
+    // update in a single query on this schema.
+    // v2 Fase 12 — filtro añadido por seller.plan. Sin este filtro, si un
+    // vendedor pasaba de Premium → Star (o Star → downgrade Free), sus slots
+    // DAILY seguían firing DIARIAMENTE aunque su plan actual no lo permite.
+    // Ahora Premium → cadence DAILY, Star → cadence WEEKLY; el resto se
+    // ignora hasta que el vendedor re-guarde su pool con la cadencia nueva.
+    const expectedPlan = cadence === 'DAILY' ? 'PREMIUM' : 'STAR';
+    const slots = await this.prisma.autoBumpSlot.findMany({
+      where: {
+        cadence,
+        product: {
+          status: 'active',
+          bumpedAt: { lt: cutoff },
+          seller: {
+            plan: expectedPlan,
+            OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
+          },
+        },
+      },
+      select: { productId: true },
+    });
+    if (slots.length === 0) return 0;
+
+    const result = await this.prisma.product.updateMany({
+      where: { id: { in: slots.map((s) => s.productId) } },
+      data: { bumpedAt: now },
+    });
+    return result.count;
+  }
+
+  private async boostQuotaFor(sellerId: string, now = new Date()) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: sellerId },
+      select: {
+        plan: true,
+        planStartedAt: true,
+        planExpiresAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const plan = activePlan(user);
+    const limits = PLAN_LIMITS[plan];
+    const { startsAt, endsAt } = currentBoostCycle(user.planStartedAt, now);
+    const usedThisMonth = await this.prisma.payment.count({
+      where: {
+        userId: sellerId,
+        concept: 'boost',
+        createdAt: { gte: startsAt, lt: endsAt },
+      },
+    });
+
+    return {
+      plan,
+      includedPerMonth: limits.includedBoostsPerMonth,
+      usedThisMonth,
+      remainingThisMonth: Math.max(
+        limits.includedBoostsPerMonth - usedThisMonth,
+        0,
+      ),
+      extraDiscountPct: limits.extraBoostDiscountPct,
+      cycleStartsAt: startsAt,
+      cycleEndsAt: endsAt,
+    };
+  }
+
+  private async calculateBoostBilling(
+    sellerId: string,
+    duration: BoostDuration,
+    now = new Date(),
+  ): Promise<BoostBilling> {
+    const quota = await this.boostQuotaFor(sellerId, now);
+    const basePrice = BOOST_PRICES[duration];
+    const included = quota.remainingThisMonth > 0;
+    const amount = included
+      ? 0
+      : Math.round(basePrice * (1 - quota.extraDiscountPct));
+
+    return {
+      ...quota,
+      duration,
+      basePrice,
+      amount,
+      included,
     };
   }
 
@@ -816,4 +1154,47 @@ function effectivePrice(
   const base = Number(price);
   if (!discount || discount <= 0) return base;
   return Number((base * (1 - discount / 100)).toFixed(2));
+}
+
+function normalizeBoostDuration(days: number): BoostDuration {
+  if (days === 3 || days === 7 || days === 30) return `${days}d`;
+  throw new BadRequestException(
+    'Duración de destacado no válida. Usa 3, 7 o 30 días.',
+  );
+}
+
+function currentBoostCycle(planStartedAt: Date | null, now: Date) {
+  let startsAt = planStartedAt ? new Date(planStartedAt) : new Date(now);
+  if (!planStartedAt || startsAt > now) {
+    startsAt.setUTCDate(1);
+    startsAt.setUTCHours(0, 0, 0, 0);
+  } else {
+    while (true) {
+      const next = addUtcMonths(startsAt, 1);
+      if (next > now) break;
+      startsAt = next;
+    }
+  }
+  const endsAt = addUtcMonths(startsAt, 1);
+  return { startsAt, endsAt };
+}
+
+function addUtcMonths(date: Date, months: number) {
+  const targetMonth = date.getUTCMonth() + months;
+  const targetYear = date.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
+  const lastDay = new Date(
+    Date.UTC(targetYear, normalizedMonth + 1, 0),
+  ).getUTCDate();
+  return new Date(
+    Date.UTC(
+      targetYear,
+      normalizedMonth,
+      Math.min(date.getUTCDate(), lastDay),
+      date.getUTCHours(),
+      date.getUTCMinutes(),
+      date.getUTCSeconds(),
+      date.getUTCMilliseconds(),
+    ),
+  );
 }

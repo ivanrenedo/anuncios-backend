@@ -4,6 +4,8 @@ import {
   PLAN_LIMITS,
   PLAN_PRICES,
   BOOST_PRICE,
+  BOOST_PRICES,
+  DISCOUNT_TIERS,
 } from './plan-limits';
 import { UserPlan } from '../users/dto/user-plan.enum';
 
@@ -55,33 +57,56 @@ describe('PLAN_LIMITS', () => {
     }
   });
 
-  it('caps grow monotonically FREE < BASIC < STAR < PREMIUM (active products)', () => {
+  it('active-product caps grow monotonically FREE < BASIC < STAR < PREMIUM', () => {
     expect(PLAN_LIMITS.FREE.maxActiveProducts).toBeLessThan(PLAN_LIMITS.BASIC.maxActiveProducts);
     expect(PLAN_LIMITS.BASIC.maxActiveProducts).toBeLessThan(PLAN_LIMITS.STAR.maxActiveProducts);
     expect(PLAN_LIMITS.STAR.maxActiveProducts).toBeLessThan(PLAN_LIMITS.PREMIUM.maxActiveProducts);
   });
 
-  it('caps grow monotonically FREE ≤ BASIC < STAR < PREMIUM (images per product)', () => {
-    expect(PLAN_LIMITS.FREE.maxImagesPerProduct).toBeLessThanOrEqual(PLAN_LIMITS.BASIC.maxImagesPerProduct);
-    expect(PLAN_LIMITS.BASIC.maxImagesPerProduct).toBeLessThan(PLAN_LIMITS.STAR.maxImagesPerProduct);
-    expect(PLAN_LIMITS.STAR.maxImagesPerProduct).toBeLessThan(PLAN_LIMITS.PREMIUM.maxImagesPerProduct);
+  it('image caps never shrink as the plan tier rises', () => {
+    expect(PLAN_LIMITS.BASIC.maxImagesPerProduct).toBeGreaterThanOrEqual(
+      PLAN_LIMITS.FREE.maxImagesPerProduct,
+    );
+    expect(PLAN_LIMITS.STAR.maxImagesPerProduct).toBeGreaterThanOrEqual(
+      PLAN_LIMITS.BASIC.maxImagesPerProduct,
+    );
+    expect(PLAN_LIMITS.PREMIUM.maxImagesPerProduct).toBeGreaterThanOrEqual(
+      PLAN_LIMITS.STAR.maxImagesPerProduct,
+    );
+  });
+
+  it('included boosts grow monotonically FREE < BASIC < STAR < PREMIUM', () => {
+    expect(PLAN_LIMITS.FREE.includedBoostsPerMonth).toBeLessThan(
+      PLAN_LIMITS.BASIC.includedBoostsPerMonth,
+    );
+    expect(PLAN_LIMITS.BASIC.includedBoostsPerMonth).toBeLessThan(
+      PLAN_LIMITS.STAR.includedBoostsPerMonth,
+    );
+    expect(PLAN_LIMITS.STAR.includedBoostsPerMonth).toBeLessThan(
+      PLAN_LIMITS.PREMIUM.includedBoostsPerMonth,
+    );
+  });
+
+  it('only STAR and PREMIUM allow pinned products in the profile', () => {
+    expect(PLAN_LIMITS.FREE.pinnedProducts).toBe(0);
+    expect(PLAN_LIMITS.BASIC.pinnedProducts).toBe(0);
+    expect(PLAN_LIMITS.STAR.pinnedProducts).toBeGreaterThan(0);
+    expect(PLAN_LIMITS.PREMIUM.pinnedProducts).toBeGreaterThan(PLAN_LIMITS.STAR.pinnedProducts);
   });
 });
 
 describe('PLAN_PRICES', () => {
-  it('has an entry for every paid plan (BASIC/STAR/PREMIUM)', () => {
-    expect(PLAN_PRICES[UserPlan.BASIC]).toBeDefined();
-    expect(PLAN_PRICES[UserPlan.STAR]).toBeDefined();
-    expect(PLAN_PRICES[UserPlan.PREMIUM]).toBeDefined();
-  });
-  it('grows monotonically BASIC < STAR < PREMIUM', () => {
+  it('prices grow monotonically FREE < BASIC < STAR < PREMIUM', () => {
+    expect(PLAN_PRICES[UserPlan.FREE]).toBeLessThan(PLAN_PRICES[UserPlan.BASIC]);
     expect(PLAN_PRICES[UserPlan.BASIC]).toBeLessThan(PLAN_PRICES[UserPlan.STAR]);
     expect(PLAN_PRICES[UserPlan.STAR]).toBeLessThan(PLAN_PRICES[UserPlan.PREMIUM]);
   });
-  it('FREE is not billable (absent from the ledger)', () => {
-    expect(PLAN_PRICES[UserPlan.FREE]).toBeUndefined();
+
+  it('FREE is not billable (zero in the ledger)', () => {
+    expect(PLAN_PRICES[UserPlan.FREE]).toBe(0);
   });
-  it('BOOST is cheaper than any paid plan (single-anuncio uplift)', () => {
+
+  it('cheapest boost is cheaper than any paid plan', () => {
     expect(BOOST_PRICE).toBeLessThan(PLAN_PRICES[UserPlan.BASIC]);
   });
 });
@@ -96,5 +121,44 @@ describe('PLAN_CONCEPTS', () => {
 
   it('FREE has no ledger concept (never charged)', () => {
     expect(PLAN_CONCEPTS[UserPlan.FREE]).toBeUndefined();
+  });
+});
+
+describe('BOOST_PRICES', () => {
+  it('has 3d, 7d and 30d entries', () => {
+    expect(BOOST_PRICES['3d']).toBeDefined();
+    expect(BOOST_PRICES['7d']).toBeDefined();
+    expect(BOOST_PRICES['30d']).toBeDefined();
+  });
+
+  it('prices grow with duration', () => {
+    expect(BOOST_PRICES['3d']).toBeLessThan(BOOST_PRICES['7d']);
+    expect(BOOST_PRICES['7d']).toBeLessThan(BOOST_PRICES['30d']);
+  });
+
+  it('BOOST_PRICE compat alias points at the 3d rate', () => {
+    expect(BOOST_PRICE).toBe(BOOST_PRICES['3d']);
+  });
+});
+
+describe('DISCOUNT_TIERS', () => {
+  it('covers every month from 1 to 12 with no gaps or overlaps', () => {
+    for (let m = 1; m <= 12; m++) {
+      const tiers = DISCOUNT_TIERS.filter(t => m >= t.minMonths && m <= t.maxMonths);
+      expect(tiers).toHaveLength(1);
+    }
+  });
+
+  it('short activations have no discount', () => {
+    const tier = DISCOUNT_TIERS.find(t => 1 >= t.minMonths && 1 <= t.maxMonths);
+    expect(tier?.pct).toBe(0);
+  });
+
+  it('12-month activation has the largest discount', () => {
+    const yearlyTier = DISCOUNT_TIERS.find(t => 12 >= t.minMonths && 12 <= t.maxMonths);
+    const otherTiers = DISCOUNT_TIERS.filter(t => t !== yearlyTier);
+    for (const t of otherTiers) {
+      expect(yearlyTier!.pct).toBeGreaterThan(t.pct);
+    }
   });
 });

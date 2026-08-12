@@ -103,6 +103,11 @@ export class ProductModel {
   @Field({ nullable: true })
   boostedUntil?: Date;
 
+  /** Set when the seller drops the price. The frontend renders the "Rebajado
+   *  hoy" chip while `now < priceReducedUntil` (48h window). */
+  @Field({ nullable: true })
+  priceReducedUntil?: Date;
+
   @Field()
   createdAt: Date;
 

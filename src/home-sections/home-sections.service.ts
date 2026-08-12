@@ -61,28 +61,13 @@ export class HomeSectionsService {
       result.push({ ...section, products });
     }
 
-    const premiumProducts = await this.resolvePremiumShowcase();
-    if (premiumProducts.length > 0) {
-      const insertIdx = result.findIndex(
-        (s) => s.type === 'product_rail' || s.type === 'product_grid',
-      );
-      const premiumSection = {
-        id: '__premium_showcase__',
-        type: 'premium_showcase',
-        title: 'Tiendas Premium',
-        subtitle: 'Productos de vendedores Premium',
-        icon: 'crown',
-        filter: null,
-        config: null,
-        sortOrder: -1,
-        products: premiumProducts,
-      };
-      if (insertIdx >= 0) {
-        result.splice(insertIdx, 0, premiumSection);
-      } else {
-        result.push(premiumSection);
-      }
-    }
+    // v2 Fase 12 — la sección sintética "Tiendas Premium" que aquí se
+    // inyectaba (resolvePremiumShowcase) fue retirada porque duplicaba con
+    // PremiumStoresRail del frontend/mobile, y además no respetaba el cap
+    // 3-por-vendedor del briefing v2 (metía TODOS los productos Premium).
+    // El rail v2 vive en el cliente y consume homeCarouselPremium con
+    // fairness, cap y rotación diaria. resolvePremiumShowcase se mantiene
+    // como código muerto por si algún día se quiere resucitar un fallback.
 
     return result;
   }
@@ -300,60 +285,10 @@ export class HomeSectionsService {
     return views.map((v) => v.product).filter((p) => p.status === 'active');
   }
 
-  private async resolvePremiumShowcase() {
-    const now = new Date();
-    const include = {
-      images: { take: 1, orderBy: { sortOrder: 'asc' as const } },
-      seller: {
-        select: {
-          id: true,
-          name: true,
-          avatarUrl: true,
-          verified: true,
-          plan: true,
-          planExpiresAt: true,
-        },
-      },
-      category: { select: { id: true, label: true, slug: true } },
-      propertyDetail: true,
-      serviceDetail: true,
-      vehicleDetail: true,
-    };
-    const planWhere = (plan: 'PREMIUM' | 'STAR'): Prisma.ProductWhereInput => ({
-      status: 'active',
-      seller: {
-        plan,
-        OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
-      },
-    });
-
-    // PREMIUM gets priority; STAR gets the occasional slots promised by its plan.
-    const [premium, star] = await Promise.all([
-      this.prisma.product.findMany({
-        where: planWhere('PREMIUM'),
-        orderBy: { createdAt: 'desc' },
-        take: 12,
-        include,
-      }),
-      this.prisma.product.findMany({
-        where: planWhere('STAR'),
-        orderBy: { createdAt: 'desc' },
-        take: 3,
-        include,
-      }),
-    ]);
-
-    // Interleave STAR items among the PREMIUM ones (1 STAR every 4 PREMIUM)
-    // so they appear inside the rail rather than tacked on at the end.
-    const result: typeof premium = [];
-    let s = 0;
-    for (let i = 0; i < premium.length; i++) {
-      result.push(premium[i]);
-      if ((i + 1) % 4 === 0 && s < star.length) result.push(star[s++]);
-    }
-    while (s < star.length) result.push(star[s++]);
-    return result;
-  }
+  // v2 Fase 12 — resolvePremiumShowcase eliminado. Duplicaba con
+  // PremiumStoresRail (shop web + mobile) que consume homeCarouselPremium
+  // con cap 3-por-vendedor y rotación diaria. La lógica antigua metía todos
+  // los productos Premium+Star sin cap → violaba el briefing v2.
 
   private async broadcastSectionNotification(section: any) {
     const BATCH = 100;
@@ -376,4 +311,100 @@ export class HomeSectionsService {
       );
     }
   }
+
+  /**
+   * v2 (Fase 5.4). Flattened, interleaved product list for the home "Tiendas
+   * Premium" carousel. Reads today's `PremiumCarouselDay` rows (populated by
+   * `PremiumCarouselCron`) and returns them round-robin so consecutive tiles
+   * come from different sellers instead of clustering by vendor.
+   *
+   * Products whose status is no longer 'active' when the query runs are
+   * dropped from the output — the cron caches ids, but visibility is
+   * re-checked on read.
+   */
+  async premiumCarousel(take = 30) {
+    const today = startOfUtcDay(new Date());
+    const rows = await this.prisma.premiumCarouselDay.findMany({
+      where: { day: today },
+    });
+
+    // v2 Fase 11.5 fallback: si el cron no corrió todavía para hoy (deploy
+    // reciente, servidor recién arrancado, DST), computamos on-the-fly con
+    // el mismo cap 3-por-vendedor. Sin persistir — es responsabilidad del
+    // cron. Sin esto, el carrusel se vería vacío hasta el próximo tick del
+    // cron a 00:00 GMT+1, lo que confunde a QA y al usuario final.
+    let vendorProductIds: string[][];
+    if (rows.length === 0) {
+      const premiumUsers = await this.prisma.user.findMany({
+        where: {
+          plan: 'PREMIUM',
+          suspended: false,
+          OR: [
+            { planExpiresAt: null },
+            { planExpiresAt: { gt: new Date() } },
+          ],
+        },
+        select: {
+          id: true,
+          products: {
+            where: { status: 'active' },
+            orderBy: { createdAt: 'desc' },
+            take: 3, // v2 Fase 11.5 — cap 3 por vendedor incluso sin cron
+            select: { id: true },
+          },
+        },
+      });
+      vendorProductIds = premiumUsers
+        .map((u) => u.products.map((p) => p.id))
+        .filter((ids) => ids.length > 0);
+    } else {
+      // Cap defensivo: la fila del cron ya viene con máximo 3, pero forzarlo
+      // aquí protege contra migraciones futuras que ampliaran el pool sin
+      // actualizar el consumidor.
+      vendorProductIds = rows.map((r) => r.productIds.slice(0, 3));
+    }
+
+    const flatIds: string[] = interleaveByVendor(vendorProductIds).slice(
+      0,
+      take,
+    );
+    if (flatIds.length === 0) return [];
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: flatIds }, status: 'active' },
+      include: {
+        seller: true,
+        category: { include: { parent: true } },
+        images: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+
+    // Preserve the interleaved order — findMany returns unordered.
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return flatIds
+      .map((id) => byId.get(id))
+      .filter((p): p is (typeof products)[number] => !!p);
+  }
+}
+
+function startOfUtcDay(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
+}
+
+/**
+ * Round-robin merge across N lists: takes the first item of every list, then
+ * the second of every list, and so on. Empty slots collapse gracefully, so a
+ * seller with fewer than the max products doesn't create gaps.
+ */
+function interleaveByVendor<T>(lists: T[][]): T[] {
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  const out: T[] = [];
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      if (i < list.length) out.push(list[i]);
+    }
+  }
+  return out;
 }

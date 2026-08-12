@@ -10,6 +10,13 @@ enum Action {
   update
 }
 
+input ActivatePlanInput {
+  months: Int!
+  notes: String
+  plan: UserPlan!
+  userId: String!
+}
+
 type AdminActionModel {
   action: String!
   admin: UserModel
@@ -39,6 +46,25 @@ type AuthResponse {
   accessToken: String!
   refreshToken: String!
   user: UserModel
+}
+
+type AutoBumpSlotModel {
+  cadence: String!
+  createdAt: DateTime!
+  id: ID!
+  product: ProductModel
+  productId: String!
+  userId: String!
+}
+
+type BoostQuotaModel {
+  cycleEndsAt: DateTime!
+  cycleStartsAt: DateTime!
+  extraDiscountPct: Float!
+  includedPerMonth: Int!
+  plan: UserPlan!
+  remainingThisMonth: Int!
+  usedThisMonth: Int!
 }
 
 input BroadcastInput {
@@ -80,6 +106,13 @@ input ChangePlanInput {
   plan: UserPlan!
   reason: String
   userId: String!
+}
+
+type CheaperAtTwelveWarningModel {
+  currentTotal: Float!
+  savings: Float!
+  triggered: Boolean!
+  yearlyTotal: Float!
 }
 
 input CreateCategoryInput {
@@ -299,14 +332,22 @@ input MediaItemInput {
   url: String!
 }
 
+type MonthlyActivationsEntry {
+  activations: Int!
+  month: String!
+  revenue: Float!
+}
+
 type Mutation {
   acceptHomeSuggestion(id: String!): HomeSectionModel!
+  adminActivatePlan(input: ActivatePlanInput!): PlanActivationModel!
   adminDeleteProductImage(imageId: String!): ProductModel!
   adminLogin(input: AdminLoginInput!): AuthResponse!
   adminSetProductStatus(id: String!, reason: String, status: String!): ProductModel!
   adminUpdateProduct(id: String!, input: UpdateProductInput!): ProductModel!
   adminUpdateUser(id: String!, input: AdminUpdateUserInput!): UserModel!
   approveVerification(id: String!): VerificationModel!
+  boostMyProduct(days: Int, id: String!): ProductModel!
   boostProduct(days: Int, id: String!): ProductModel!
   bumpProduct(id: String!): ProductModel!
   changePinWithOtp(input: ChangePinInput!): OtpResponse!
@@ -347,11 +388,13 @@ type Mutation {
   removePushToken(token: String!): Boolean!
   reorderHomeSections(ids: [String!]!): [HomeSectionModel!]!
   requestPinChangeOtp: OtpResponse!
-  requestVerification: VerificationModel!
+  requestVerification(input: RequestVerificationInput): VerificationModel!
   runStatsAnalyzer: Int!
   sendMarketingNotification(input: BroadcastInput!): Int!
   sendPhoneOtp(input: SendPhoneOtpInput!): OtpResponse!
   sendSystemNotification(input: BroadcastInput!): Int!
+  setAutoBumpSlots(productIds: [String!]!): [AutoBumpSlotModel!]!
+  setPinnedProducts(productIds: [String!]!): [ProductModel!]!
   suspendUser(id: String!, reason: String): UserModel!
   toggleFavorite(productId: String!): ToggleFavoriteResponse!
   trackHomeSectionEvent(event: String!, sectionId: String!, viewerKey: String!): Boolean!
@@ -410,6 +453,21 @@ enum PermissionAcces {
   GRANTED
 }
 
+type PlanActivationModel {
+  activatedAt: DateTime!
+  activatedByAdminId: String
+  discountPct: Float!
+  endsAt: DateTime!
+  id: ID!
+  months: Int!
+  notes: String
+  plan: UserPlan!
+  startsAt: DateTime!
+  totalPaid: Float!
+  unitPrice: Float!
+  userId: String!
+}
+
 type PlanChangeModel {
   changedById: String!
   createdAt: DateTime!
@@ -419,6 +477,36 @@ type PlanChangeModel {
   oldPlan: UserPlan!
   reason: String
   userId: String!
+}
+
+"""Ciclo de facturación del plan del usuario."""
+enum PlanCycle {
+  MONTHLY
+  YEARLY
+}
+
+type PlanDistributionEntry {
+  count: Int!
+  plan: UserPlan!
+}
+
+type PlanStatsModel {
+  activationsByMonth: [MonthlyActivationsEntry!]!
+  activeMrr: Float!
+  churnedLast30d: Int!
+  distribution: [PlanDistributionEntry!]!
+  expiringNext7d: Int!
+}
+
+type PlanTotalPreviewModel {
+  cheaperAtTwelve: CheaperAtTwelveWarningModel!
+  discountAmount: Float!
+  discountPct: Float!
+  gross: Float!
+  months: Int!
+  plan: UserPlan!
+  total: Float!
+  unitPrice: Float!
 }
 
 input ProductAttributeInput {
@@ -459,6 +547,7 @@ type ProductModel {
   jobDetail: JobDetailModel
   marketplaceDetail: MarketplaceDetailModel
   price: Float!
+  priceReducedUntil: DateTime
   propertyDetail: PropertyDetailModel
   seller: UserModel
   sellerId: String!
@@ -483,6 +572,7 @@ type PropertyDetailModel {
 type Query {
   adminActions(skip: Int, take: Int): [AdminActionModel!]!
   adminHomeSections: [HomeSectionModel!]!
+  adminPlanStats(monthsBack: Int): PlanStatsModel!
   allProducts(query: String, skip: Int, take: Int): [ProductModel!]!
   businessContact: BusinessContactModel!
   categories: [CategoryModel!]!
@@ -496,19 +586,25 @@ type Query {
   followersCount(userId: String!): Int!
   following(userId: String!): [FollowerModel!]!
   followingCount(userId: String!): Int!
+  homeCarouselPremium(take: Int): [ProductModel!]!
   homeSectionStats: [HomeSectionStats!]!
   homeSections(viewerKey: String): [HomeSectionModel!]!
   homeSuggestions: [HomeSuggestionModel!]!
   isFavorited(productId: String!): Boolean!
   isFollowing(userId: String!): Boolean!
   me: UserModel
+  myAutoBumpSlots: [AutoBumpSlotModel!]!
+  myBoostQuota: BoostQuotaModel!
   myFavorites: [FavoriteModel!]!
   mySavedSearches: [SavedSearchModel!]!
   myVerificationRequest: VerificationModel
   myViewsDaily(days: Int): [DailyCountModel!]!
   notifications: [NotificationModel!]!
   payments(skip: Int, take: Int): [PaymentModel!]!
+  pinnedProducts(userId: String!): [ProductModel!]!
+  planActivations(userId: String!): [PlanActivationModel!]!
   planHistory(userId: String!): [PlanChangeModel!]!
+  planTotalPreview(months: Int!, plan: UserPlan!): PlanTotalPreviewModel!
   previewFilterCount(filter: JSON!): Int!
   product(id: String!): ProductModel!
   products(skip: Int, take: Int): [ProductModel!]!
@@ -576,6 +672,10 @@ enum ReportType {
   user
 }
 
+input RequestVerificationInput {
+  docs: [String!]
+}
+
 type ReviewModel {
   author: UserModel
   authorId: String!
@@ -616,15 +716,22 @@ type SavedSearchModel {
 }
 
 input SearchProductsInput {
+  bathroomsMin: Int
+  bedroomsMin: Int
   categoryId: String
   city: String
   condition: String
+  engines: [String!]
+  offerType: String
+  operation: String
   priceMax: Float
   priceMin: Float
   query: String
   skip: Int = 0
   sortBy: String = "recent"
+  surfaceMin: Int
   take: Int = 20
+  transmissions: [String!]
 }
 
 type SearchTermStatModel {
@@ -734,6 +841,7 @@ input UpdateUserInput {
 type UserModel {
   avatarUrl: String
   bio: String
+  businessVerifiedAt: DateTime
   coverUrl: String
   createdAt: DateTime!
   effectivePlan: UserPlan
@@ -751,7 +859,9 @@ type UserModel {
   permission: PermissionAcces!
   phone: String
   plan: UserPlan!
+  planCycle: PlanCycle!
   planExpiresAt: DateTime
+  planStartedAt: DateTime
   rolId: String
   showEmail: Boolean!
   showPhone: Boolean!
@@ -784,6 +894,7 @@ type VehicleDetailModel {
 
 type VerificationModel {
   createdAt: DateTime!
+  docs: [String!]!
   id: ID!
   rejectedReason: String
   reviewedAt: DateTime

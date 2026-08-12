@@ -134,4 +134,16 @@ export class HomeSectionsResolver {
   ) {
     return this.service.trackEvent(sectionId, event, viewerKey);
   }
+
+  /**
+   * v2 (Fase 5.4). Flat product list for the home "Tiendas Premium"
+   * carousel — interleaved round-robin across today's Premium sellers so
+   * consecutive tiles come from different vendors.
+   */
+  @Query(() => [ProductModel])
+  async homeCarouselPremium(
+    @Args('take', { type: () => Int, nullable: true }) take?: number,
+  ) {
+    return this.service.premiumCarousel(take ?? 30);
+  }
 }

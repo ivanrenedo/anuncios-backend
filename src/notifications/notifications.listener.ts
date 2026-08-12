@@ -83,29 +83,12 @@ export class NotificationsListener {
     );
   }
 
-  /** `follow` — a followed seller published a new product. */
-  @OnEvent(NotificationEvents.ProductPublished, { async: true })
-  async onProductPublished(payload: ProductPublishedEvent) {
-    const followers = await this.prisma.follower.findMany({
-      where: { followedId: payload.sellerId },
-      select: { followerId: true },
-    });
-    if (followers.length === 0) return;
-
-    await Promise.all(
-      followers.map((f) =>
-        this.notifications.create({
-          userId: f.followerId,
-          type: 'follow',
-          title: 'Nueva publicación de un vendedor que sigues',
-          body: `${payload.sellerName} publicó "${payload.productTitle}".`,
-          avatar: payload.sellerAvatarUrl ?? undefined,
-          relatedProductId: payload.productId,
-          relatedUserId: payload.sellerId,
-        }),
-      ),
-    );
-  }
+  // v2 (Fase 4.4): the follower notification is no longer fired inline. It is
+  // grouped by `FollowerNotifyCron` into at most one aggregated notification
+  // per seller per 6h window, so a Premium seller publishing 5 products in an
+  // afternoon does not flood every follower's inbox. Saved-search alerts still
+  // fire immediately because they are per-recipient (buyer intent) rather
+  // than per-seller.
 
   /** `alert` — a new product matches someone's saved search. */
   @OnEvent(NotificationEvents.ProductPublished, { async: true })

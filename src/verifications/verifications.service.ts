@@ -25,7 +25,7 @@ export class VerificationsService {
     private events: EventEmitter2,
   ) {}
 
-  async requestVerification(userId: string) {
+  async requestVerification(userId: string, docs: string[] = []) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no encontrado.');
 
@@ -66,7 +66,7 @@ export class VerificationsService {
       );
 
     return this.prisma.verificationRequest.create({
-      data: { userId },
+      data: { userId, docs },
       include: INCLUDE,
     });
   }
@@ -104,9 +104,12 @@ export class VerificationsService {
         },
         include: INCLUDE,
       }),
+      // `verified` powers the personal insignia (any plan). `businessVerifiedAt`
+      // is the timestamp the 👑 badge on Premium reads to gate itself and to
+      // show "verified since {month}" in the profile.
       this.prisma.user.update({
         where: { id: request.userId },
-        data: { verified: true },
+        data: { verified: true, businessVerifiedAt: new Date() },
       }),
     ]);
 
