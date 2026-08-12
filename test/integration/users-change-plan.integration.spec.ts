@@ -79,7 +79,7 @@ describe('UsersService.changePlan (integration)', () => {
     expect(Number(payments[0].amount)).toBe(12000);
   });
 
-  it('upgrading FREE → PREMIUM: payment concept is plan_premium at 35000 (v2 price)', async () =>
+  it('upgrading FREE → PREMIUM: payment concept is plan_premium at 35000 (v2 price)', async () => {
     await service.changePlan(adminId, {
       userId,
       plan: 'PREMIUM',
