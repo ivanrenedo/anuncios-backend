@@ -11,7 +11,7 @@ import { AdminUpdateUserInput } from './dto/admin-update-user.input';
 import { ChangePlanInput } from './dto/change-plan.input';
 import { hashPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
-import { PLAN_PRICES } from '../common/plan-limits';
+import { PLAN_CONCEPTS, PLAN_PRICES } from '../common/plan-limits';
 import { AuditService } from '../audit/audit.service';
 import { NotificationEvents } from '../notifications/notifications.events';
 import { StorageService } from '../upload/storage.service';
@@ -326,7 +326,7 @@ export class UsersService {
         data: {
           userId: input.userId,
           amount: PLAN_PRICES[input.plan],
-          concept: input.plan === 'STAR' ? 'plan_star' : 'plan_premium',
+          concept: PLAN_CONCEPTS[input.plan],
           note: input.reason ?? null,
           createdById: adminId,
         },

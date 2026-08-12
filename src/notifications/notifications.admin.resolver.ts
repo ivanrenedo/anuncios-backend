@@ -60,7 +60,7 @@ export class NotificationsAdminResolver {
   /** Optional audience segmentation: by plan tier and/or city substring. */
   private segmentWhere(input: BroadcastInput) {
     const where: Record<string, unknown> = {};
-    if (input.plan && ['FREE', 'STAR', 'PREMIUM'].includes(input.plan)) {
+    if (input.plan && ['FREE', 'BASIC', 'STAR', 'PREMIUM'].includes(input.plan)) {
       where.plan = input.plan;
     }
     if (input.city?.trim()) {

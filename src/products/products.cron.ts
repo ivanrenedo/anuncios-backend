@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const PLAN_LABELS: Record<string, string> = {
+  BASIC: 'Básico',
   STAR: 'Estrella',
   PREMIUM: 'Premium',
 };

@@ -17,6 +17,7 @@ import {
 } from './email.events';
 
 const PLAN_LABELS: Record<string, string> = {
+  BASIC: 'Básico',
   STAR: 'Estrella',
   PREMIUM: 'Premium',
   FREE: 'Gratis',

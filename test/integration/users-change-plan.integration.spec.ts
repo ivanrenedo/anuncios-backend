@@ -75,10 +75,10 @@ describe('UsersService.changePlan (integration)', () => {
       createdById: adminId,
     });
     // Amount is a Decimal — assert numerically to avoid Decimal vs number pitfalls.
-    expect(Number(payments[0].amount)).toBe(3000);
+    expect(Number(payments[0].amount)).toBe(12000);
   });
 
-  it('upgrading FREE → PREMIUM: payment concept is plan_premium at 10000', async () => {
+  it('upgrading FREE → PREMIUM: payment concept is plan_premium at 35000', async () => {
     await service.changePlan(adminId, {
       userId,
       plan: 'PREMIUM',
@@ -87,7 +87,7 @@ describe('UsersService.changePlan (integration)', () => {
 
     const [payment] = await prisma.payment.findMany({ where: { userId } });
     expect(payment.concept).toBe('plan_premium');
-    expect(Number(payment.amount)).toBe(10000);
+    expect(Number(payment.amount)).toBe(35000);
   });
 
   it('downgrading STAR → FREE: creates PlanChange but NO Payment', async () => {

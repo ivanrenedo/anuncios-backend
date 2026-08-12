@@ -7,6 +7,7 @@ import { EMAIL_QUEUE, EmailJob } from './email.processor';
 import { UnsubscribeTokenService } from './email.controller';
 
 const PLAN_LABELS: Record<string, string> = {
+  BASIC: 'Básico',
   STAR: 'Estrella',
   PREMIUM: 'Premium',
   FREE: 'Gratis',
@@ -46,7 +47,7 @@ export class EmailCron {
     const in7 = new Date(now.getTime() + PLAN_EXPIRING_WARN_DAYS * 86_400_000);
     const users = await this.prisma.user.findMany({
       where: {
-        plan: { in: ['STAR', 'PREMIUM'] },
+        plan: { in: ['BASIC', 'STAR', 'PREMIUM'] },
         planExpiresAt: { gte: now, lte: in7 },
         suspended: false,
       },
@@ -93,7 +94,7 @@ export class EmailCron {
     const start = new Date(now.getTime() - 86_400_000);
     const users = await this.prisma.user.findMany({
       where: {
-        plan: { in: ['STAR', 'PREMIUM'] },
+        plan: { in: ['BASIC', 'STAR', 'PREMIUM'] },
         planExpiresAt: { gte: start, lte: now },
       },
       select: {
@@ -296,7 +297,7 @@ export class EmailCron {
       this.prisma.planChange.findMany({
         where: {
           createdAt: { gte: weekStart },
-          newPlan: { in: ['STAR', 'PREMIUM'] },
+          newPlan: { in: ['BASIC', 'STAR', 'PREMIUM'] },
         },
         select: { newPlan: true },
       }),
