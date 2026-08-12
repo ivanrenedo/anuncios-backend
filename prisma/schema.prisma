@@ -27,6 +27,12 @@ model User {
   showPhone       Boolean         @default(true) @map("show_phone")
   permission      PermissionAcces @default(GRANTED)
   themePreference String          @default("system") @map("theme_preference") @db.VarChar(10)
+  /// Toggle for the printable QR seller card: include phone on the card.
+  /// Off by default so a shared/printed card never leaks contact info unless
+  /// the seller opts in. Independent of `showPhone` (public profile).
+  qrShowPhone     Boolean         @default(false) @map("qr_show_phone")
+  /// Same as `qrShowPhone` but for the email row on the QR card.
+  qrShowEmail     Boolean         @default(false) @map("qr_show_email")
   plan            UserPlan        @default(FREE)
   planCycle       PlanCycle       @default(MONTHLY) @map("plan_cycle")
   planStartedAt   DateTime?       @map("plan_started_at")
@@ -76,6 +82,7 @@ model User {
   paymentsCreated       Payment[]             @relation("PaymentAdmin")
   adminActions          AdminAction[]         @relation("AdminActionAdmin")
   emailLogs             EmailLog[]
+  qrScans               SellerQrScan[]        @relation("SellerQrScanSeller")
   rol                   Rol?                  @relation(fields: [rolId], references: [id])
   rolId                 String?
 
@@ -259,6 +266,27 @@ model ProductView {
   @@index([productId, viewerKey, viewedAt])
   @@index([viewedAt])
   @@map("product_views")
+}
+
+/// Event log for QR-driven visits to a seller's public profile.
+/// One row per counted scan; dedup is 30 min by (sellerId, visitorHash) — a
+/// findFirst on the composite index keeps refresh/StrictMode double-mounts
+/// from inflating the number. Only inserted when the seller's active plan is
+/// STAR or PREMIUM; other cases return silently so the client stays simple.
+model SellerQrScan {
+  id          String   @id @default(uuid())
+  sellerId    String   @map("seller_id")
+  source      String   @default("qr") @db.VarChar(20)
+  visitorHash String?  @map("visitor_hash") @db.VarChar(64)
+  userAgent   String?  @map("user_agent") @db.VarChar(300)
+  ipHash      String?  @map("ip_hash") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  seller User @relation("SellerQrScanSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId, createdAt])
+  @@index([sellerId, visitorHash, createdAt])
+  @@map("seller_qr_scans")
 }
 
 model ProductImage {

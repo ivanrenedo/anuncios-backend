@@ -93,6 +93,12 @@ export class UserModel {
   showPhone: boolean;
 
   @Field()
+  qrShowPhone: boolean;
+
+  @Field()
+  qrShowEmail: boolean;
+
+  @Field()
   themePreference: string;
 
   @Field()

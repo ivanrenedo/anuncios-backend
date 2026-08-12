@@ -32,6 +32,7 @@ import { AuditModule } from './audit/audit.module';
 import { ExportModule } from './export/export.module';
 import { HealthModule } from './health/health.module';
 import { EmailModule } from './email/email.module';
+import { SellerQrScansModule } from './seller-qr-scans/seller-qr-scans.module';
 
 @Module({
   imports: [
@@ -148,6 +149,7 @@ import { EmailModule } from './email/email.module';
     ExportModule,
     HealthModule,
     EmailModule,
+    SellerQrScansModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: GqlThrottlerGuard }],
 })

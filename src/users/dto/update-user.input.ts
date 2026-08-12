@@ -42,5 +42,11 @@ export class UpdateUserInput {
   showPhone?: boolean;
 
   @Field({ nullable: true })
+  qrShowPhone?: boolean;
+
+  @Field({ nullable: true })
+  qrShowEmail?: boolean;
+
+  @Field({ nullable: true })
   themePreference?: string;
 }
