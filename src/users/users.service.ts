@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -34,6 +35,15 @@ import {
   PlanActivatedEvent,
   AccountSuspendedEvent,
 } from '../email/email.events';
+
+const SUPER_ADMIN_LABEL = 'SUPER_ADMIN';
+
+function normalizeRoleLabel(label?: string | null) {
+  return (label ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
 
 @Injectable()
 export class UsersService {
@@ -129,7 +139,7 @@ export class UsersService {
   }
 
   /** Admin edit of any user by id (name, email, location, role, verified). */
-  async adminUpdate(id: string, input: AdminUpdateUserInput) {
+  async adminUpdate(id: string, input: AdminUpdateUserInput, adminId?: string) {
     const before = await this.prisma.user.findUnique({
       where: { id },
       select: {
@@ -139,10 +149,18 @@ export class UsersService {
       },
     });
 
-    const { rolId, ...rest } = input;
+    const { rolId, pin, ...rest } = input;
     const data: any = { ...rest };
     if (rolId !== undefined) {
       data.rol = rolId ? { connect: { id: rolId } } : { disconnect: true };
+    }
+    const nextPin = typeof pin === 'string' ? pin.trim() : '';
+    if (nextPin) {
+      await this.ensureSuperAdmin(adminId);
+      if (!/^\d{4,12}$/.test(nextPin)) {
+        throw new BadRequestException('El PIN debe tener entre 4 y 12 dígitos');
+      }
+      data.pin = hashPin(nextPin);
     }
     const updated = await this.prisma.user.update({ where: { id }, data });
 
@@ -174,7 +192,24 @@ export class UsersService {
       });
     }
 
+    if (data.pin) {
+      this.audit.log(adminId, 'update_admin_pin', 'user', id, 'PIN admin actualizado');
+    }
+
     return updated;
+  }
+
+  private async ensureSuperAdmin(adminId?: string) {
+    if (!adminId) {
+      throw new ForbiddenException('Solo un SUPER_ADMIN puede hacer esto');
+    }
+    const admin = await this.prisma.user.findUnique({
+      where: { id: adminId },
+      include: { rol: true },
+    });
+    if (normalizeRoleLabel(admin?.rol?.label) !== SUPER_ADMIN_LABEL) {
+      throw new ForbiddenException('Solo un SUPER_ADMIN puede hacer esto');
+    }
   }
 
   /** Delete a user and all of their dependent records, in one transaction. */

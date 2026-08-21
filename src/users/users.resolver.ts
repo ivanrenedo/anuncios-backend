@@ -76,10 +76,11 @@ export class UsersResolver {
   @UseGuards(AdminGuard, ActionsGuard)
   @RequireActions('update')
   async adminUpdateUser(
+    @GetCurrentUserId() adminId: string,
     @Args('id') id: string,
     @Args('input') input: AdminUpdateUserInput,
   ) {
-    return this.usersService.adminUpdate(id, input);
+    return this.usersService.adminUpdate(id, input, adminId);
   }
 
   @Mutation(() => UserModel)

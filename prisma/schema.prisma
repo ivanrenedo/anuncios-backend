@@ -8,83 +8,83 @@ datasource db {
 }
 
 model User {
-  id              String          @id @default(uuid())
-  name            String          @db.VarChar(100)
-  email           String          @unique @db.VarChar(255)
-  phone           String?         @db.VarChar(20)
-  avatarUrl       String?         @map("avatar_url")
-  coverUrl        String?         @map("cover_url")
-  bio             String?
-  location        String?         @db.VarChar(100)
-  language        String          @default("es") @db.VarChar(5)
-  googleId        String?         @unique @map("google_id") @db.VarChar(255)
-  verified        Boolean         @default(false)
-  pin             String?
-  notifMessages   Boolean         @default(true) @map("notif_messages")
-  notifOffers     Boolean         @default(true) @map("notif_offers")
-  notifMarketing  Boolean         @default(true) @map("notif_marketing")
-  showEmail       Boolean         @default(true) @map("show_email")
-  showPhone       Boolean         @default(true) @map("show_phone")
-  permission      PermissionAcces @default(GRANTED)
-  themePreference String          @default("system") @map("theme_preference") @db.VarChar(10)
+  id                  String          @id @default(uuid())
+  name                String          @db.VarChar(100)
+  email               String          @unique @db.VarChar(255)
+  phone               String?         @db.VarChar(20)
+  avatarUrl           String?         @map("avatar_url")
+  coverUrl            String?         @map("cover_url")
+  bio                 String?
+  location            String?         @db.VarChar(100)
+  language            String          @default("es") @db.VarChar(5)
+  googleId            String?         @unique @map("google_id") @db.VarChar(255)
+  verified            Boolean         @default(false)
+  pin                 String?
+  notifMessages       Boolean         @default(true) @map("notif_messages")
+  notifOffers         Boolean         @default(true) @map("notif_offers")
+  notifMarketing      Boolean         @default(true) @map("notif_marketing")
+  showEmail           Boolean         @default(true) @map("show_email")
+  showPhone           Boolean         @default(true) @map("show_phone")
+  permission          PermissionAcces @default(GRANTED)
+  themePreference     String          @default("system") @map("theme_preference") @db.VarChar(10)
   /// Toggle for the printable QR seller card: include phone on the card.
   /// Off by default so a shared/printed card never leaks contact info unless
   /// the seller opts in. Independent of `showPhone` (public profile).
-  qrShowPhone     Boolean         @default(false) @map("qr_show_phone")
+  qrShowPhone         Boolean         @default(false) @map("qr_show_phone")
   /// Same as `qrShowPhone` but for the email row on the QR card.
-  qrShowEmail     Boolean         @default(false) @map("qr_show_email")
-  plan            UserPlan        @default(FREE)
-  planCycle       PlanCycle       @default(MONTHLY) @map("plan_cycle")
-  planStartedAt   DateTime?       @map("plan_started_at")
-  planExpiresAt   DateTime?       @map("plan_expires_at")
-  suspended       Boolean         @default(false)
-  suspendedReason String?         @map("suspended_reason")
-  isBusiness      Boolean         @default(false) @map("is_business")
+  qrShowEmail         Boolean         @default(false) @map("qr_show_email")
+  plan                UserPlan        @default(FREE)
+  planCycle           PlanCycle       @default(MONTHLY) @map("plan_cycle")
+  planStartedAt       DateTime?       @map("plan_started_at")
+  planExpiresAt       DateTime?       @map("plan_expires_at")
+  suspended           Boolean         @default(false)
+  suspendedReason     String?         @map("suspended_reason")
+  isBusiness          Boolean         @default(false) @map("is_business")
   /// Set when a manual business verification is approved. Backs the 👑 badge
   /// and the "verified" filter. Cleared to null if the verification is later
   /// revoked.
-  businessVerifiedAt   DateTime?  @map("business_verified_at")
+  businessVerifiedAt  DateTime?       @map("business_verified_at")
   /// Rolling median (minutes) between a buyer contacting the seller and the
   /// seller's first outbound WA/tel click. Backs the "Responde rápido" badge
   /// for Premium sellers. Recomputed by a nightly cron.
-  responseTimeMinutes  Int?       @map("response_time_minutes")
-  lastSeenAt      DateTime?       @map("last_seen_at")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  responseTimeMinutes Int?            @map("response_time_minutes")
+  lastSeenAt          DateTime?       @map("last_seen_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
 
-  products              Product[]
-  favorites             Favorite[]
-  reviewsGiven          Review[]              @relation("ReviewAuthor")
-  reviewsReceived       Review[]              @relation("ReviewSeller")
-  followers             Follower[]            @relation("Followed")
-  following             Follower[]            @relation("Follower")
-  rolCreated            Rol[]                 @relation("User_Create_Rol")
-  notifications         Notification[]
-  pushTokens            PushToken[]
-  reportsMade           Report[]              @relation("ReportReporter")
-  reportsReceived       Report[]              @relation("ReportReportedUser")
-  reportsReviewed       Report[]              @relation("ReportReviewer")
-  otpCodes              OtpCode[]
-  homeSections          HomeSection[]         @relation("HomeSectionCreator")
-  homeSuggestions       HomeSuggestion[]      @relation("HomeSuggestionReviewer")
-  verificationRequests  VerificationRequest[]
-  verificationsReviewed VerificationRequest[] @relation("VerificationReviewer")
-  planChanges           PlanChange[]          @relation("PlanChangeUser")
-  planChangesBy         PlanChange[]          @relation("PlanChangeAdmin")
-  planActivations       PlanActivation[]      @relation("PlanActivationUser")
-  planActivationsByAdmin PlanActivation[]     @relation("PlanActivationAdmin")
-  pinnedProducts        PinnedProduct[]
-  autoBumpSlots         AutoBumpSlot[]
-  premiumCarouselDays   PremiumCarouselDay[]
-  followerNotifyBatches FollowerNotifyBatch[]
-  savedSearches         SavedSearch[]
-  payments              Payment[]             @relation("PaymentUser")
-  paymentsCreated       Payment[]             @relation("PaymentAdmin")
-  adminActions          AdminAction[]         @relation("AdminActionAdmin")
-  emailLogs             EmailLog[]
-  qrScans               SellerQrScan[]        @relation("SellerQrScanSeller")
-  rol                   Rol?                  @relation(fields: [rolId], references: [id])
-  rolId                 String?
+  products               Product[]
+  favorites              Favorite[]
+  reviewsGiven           Review[]              @relation("ReviewAuthor")
+  reviewsReceived        Review[]              @relation("ReviewSeller")
+  followers              Follower[]            @relation("Followed")
+  following              Follower[]            @relation("Follower")
+  rolCreated             Rol[]                 @relation("User_Create_Rol")
+  notifications          Notification[]
+  pushTokens             PushToken[]
+  reportsMade            Report[]              @relation("ReportReporter")
+  reportsReceived        Report[]              @relation("ReportReportedUser")
+  reportsReviewed        Report[]              @relation("ReportReviewer")
+  otpCodes               OtpCode[]
+  homeSections           HomeSection[]         @relation("HomeSectionCreator")
+  homeSuggestions        HomeSuggestion[]      @relation("HomeSuggestionReviewer")
+  verificationRequests   VerificationRequest[]
+  verificationsReviewed  VerificationRequest[] @relation("VerificationReviewer")
+  planChanges            PlanChange[]          @relation("PlanChangeUser")
+  planChangesBy          PlanChange[]          @relation("PlanChangeAdmin")
+  planActivations        PlanActivation[]      @relation("PlanActivationUser")
+  planActivationsByAdmin PlanActivation[]      @relation("PlanActivationAdmin")
+  pinnedProducts         PinnedProduct[]
+  autoBumpSlots          AutoBumpSlot[]
+  premiumCarouselDays    PremiumCarouselDay[]
+  followerNotifyBatches  FollowerNotifyBatch[]
+  savedSearches          SavedSearch[]
+  payments               Payment[]             @relation("PaymentUser")
+  paymentsCreated        Payment[]             @relation("PaymentAdmin")
+  adminActions           AdminAction[]         @relation("AdminActionAdmin")
+  emailLogs              EmailLog[]
+  qrScans                SellerQrScan[]        @relation("SellerQrScanSeller")
+  rol                    Rol?                  @relation(fields: [rolId], references: [id])
+  rolId                  String?
 
   @@map("users")
 }
@@ -148,6 +148,9 @@ model AdminAction {
   @@map("admin_actions")
 }
 
+/// One-time admin access invitations. A SUPER_ADMIN creates an email + PIN +
+/// role; the first successful admin login with that pair grants panel access
+/// and assigns the configured role to that existing or newly-created user.
 /// Manual-payment ledger: one row per plan purchase or boost, registered when
 /// the admin activates it. Source of truth for revenue accounting.
 model Payment {
@@ -203,29 +206,29 @@ model Category {
 }
 
 model Product {
-  id             String        @id @default(uuid())
-  sellerId       String        @map("seller_id")
-  categoryId     String        @map("category_id")
-  title          String        @db.VarChar(200)
-  description    String?
-  price          Decimal       @db.Decimal(12, 2)
-  discount       Int?          @db.SmallInt
-  condition      String?       @db.VarChar(30)
-  city           String?       @db.VarChar(50)
-  status         ProductStatus @default(active)
-  views          Int           @default(0)
-  favoritesCount Int           @default(0) @map("favorites_count")
-  contacts       Int           @default(0)
-  impressions    Int           @default(0)
-  bumpedAt       DateTime      @default(now()) @map("bumped_at")
-  boostedUntil   DateTime?     @map("boosted_until")
+  id                String        @id @default(uuid())
+  sellerId          String        @map("seller_id")
+  categoryId        String        @map("category_id")
+  title             String        @db.VarChar(200)
+  description       String?
+  price             Decimal       @db.Decimal(12, 2)
+  discount          Int?          @db.SmallInt
+  condition         String?       @db.VarChar(30)
+  city              String?       @db.VarChar(50)
+  status            ProductStatus @default(active)
+  views             Int           @default(0)
+  favoritesCount    Int           @default(0) @map("favorites_count")
+  contacts          Int           @default(0)
+  impressions       Int           @default(0)
+  bumpedAt          DateTime      @default(now()) @map("bumped_at")
+  boostedUntil      DateTime?     @map("boosted_until")
   /// Set when the seller lowers the price. While `now() < priceReducedUntil`
   /// the product shows the "Rebajado hoy" chip (48h window, Estrella/Premium
   /// only). Cleared automatically on any subsequent price update that is not
   /// a further reduction.
-  priceReducedUntil DateTime?  @map("price_reduced_until")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  priceReducedUntil DateTime?     @map("price_reduced_until")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
   seller       User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   category     Category           @relation(fields: [categoryId], references: [id])
@@ -600,6 +603,7 @@ enum ReportStatus {
 enum OtpChannel {
   sms
   email
+  whatsapp
 }
 
 enum HomeSuggestionStatus {
