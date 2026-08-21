@@ -16,6 +16,10 @@ export class AdminUpdateUserInput {
   @Field({ nullable: true })
   rolId?: string;
 
+  /** New admin PIN. Only SUPER_ADMIN can update it. */
+  @Field({ nullable: true })
+  pin?: string;
+
   @Field({ nullable: true })
   verified?: boolean;
 

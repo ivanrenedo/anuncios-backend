@@ -256,10 +256,16 @@ export class HomeSectionsService {
   // --- Private helpers ---
 
   private async resolveRecentViews(viewerKey: string) {
+    // Pedimos un pool mayor que el objetivo (10) porque un viewer puede haber
+    // abierto el mismo producto varias veces — cada apertura crea una fila
+    // en `ProductView`, y sin dedupar el rail muestra duplicados y React
+    // dispara "two children with the same key" al usar el productId como key.
+    const TARGET = 10;
+    const POOL = 40;
     const views = await this.prisma.productView.findMany({
       where: { viewerKey },
       orderBy: { viewedAt: 'desc' },
-      take: 10,
+      take: POOL,
       include: {
         product: {
           include: {
@@ -282,7 +288,17 @@ export class HomeSectionsService {
         },
       },
     });
-    return views.map((v) => v.product).filter((p) => p.status === 'active');
+
+    const seen = new Set<string>();
+    const unique: (typeof views)[number]['product'][] = [];
+    for (const v of views) {
+      const p = v.product;
+      if (!p || p.status !== 'active' || seen.has(p.id)) continue;
+      seen.add(p.id);
+      unique.push(p);
+      if (unique.length >= TARGET) break;
+    }
+    return unique;
   }
 
   // v2 Fase 12 — resolvePremiumShowcase eliminado. Duplicaba con

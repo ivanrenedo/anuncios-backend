@@ -41,6 +41,7 @@ input AdminUpdateUserInput {
   location: String
   name: String
   permission: PermissionAcces
+  pin: String
   rolId: String
   verified: Boolean
 }
@@ -401,6 +402,7 @@ type Mutation {
   suspendUser(id: String!, reason: String): UserModel!
   toggleFavorite(productId: String!): ToggleFavoriteResponse!
   trackHomeSectionEvent(event: String!, sectionId: String!, viewerKey: String!): Boolean!
+  trackSellerQrScan(sellerId: String!, source: String): Boolean!
   unboostProduct(id: String!): ProductModel!
   unfollowUser(userId: String!): FollowerModel!
   unsuspendUser(id: String!): UserModel!
@@ -600,6 +602,7 @@ type Query {
   myBoostQuota: BoostQuotaModel!
   myFavorites: [FavoriteModel!]!
   mySavedSearches: [SavedSearchModel!]!
+  mySellerQrStats: SellerQrStatsModel!
   myVerificationRequest: VerificationModel
   myViewsDaily(days: Int): [DailyCountModel!]!
   notifications: [NotificationModel!]!
@@ -742,6 +745,13 @@ type SearchTermStatModel {
   term: String!
 }
 
+type SellerQrStatsModel {
+  last30Days: Int!
+  lastScanAt: DateTime
+  thisMonth: Int!
+  total: Int!
+}
+
 type SellerRating {
   average: Float!
   count: Int!
@@ -836,6 +846,8 @@ input UpdateUserInput {
   notifMessages: Boolean
   notifOffers: Boolean
   phone: String
+  qrShowEmail: Boolean
+  qrShowPhone: Boolean
   showEmail: Boolean
   showPhone: Boolean
   themePreference: String
@@ -865,6 +877,8 @@ type UserModel {
   planCycle: PlanCycle!
   planExpiresAt: DateTime
   planStartedAt: DateTime
+  qrShowEmail: Boolean!
+  qrShowPhone: Boolean!
   rolId: String
   showEmail: Boolean!
   showPhone: Boolean!
@@ -920,6 +934,5 @@ input VerifyPhoneOtpInput {
 
 input VerifyPinChangeOtpInput {
   code: String!
-}
-"
+}"
 `;
