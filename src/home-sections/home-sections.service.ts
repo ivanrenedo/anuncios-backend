@@ -337,48 +337,60 @@ export class HomeSectionsService {
    * Products whose status is no longer 'active' when the query runs are
    * dropped from the output — the cron caches ids, but visibility is
    * re-checked on read.
+   *
+   * La fuente de verdad de QUIÉN sale es el plan actual del vendedor, no el
+   * que tenía cuando corrió el cron: partimos de los Premium activos de hoy
+   * y solo entonces buscamos su fila cacheada. Así un vendedor que caducó o
+   * bajó de plan desaparece en el acto, y uno que acaba de subir a Premium
+   * aparece sin esperar al tick de las 23:00 UTC.
    */
   async premiumCarousel(take = 30) {
     const today = startOfUtcDay(new Date());
-    const rows = await this.prisma.premiumCarouselDay.findMany({
-      where: { day: today },
-    });
 
-    // v2 Fase 11.5 fallback: si el cron no corrió todavía para hoy (deploy
-    // reciente, servidor recién arrancado, DST), computamos on-the-fly con
-    // el mismo cap 3-por-vendedor. Sin persistir — es responsabilidad del
-    // cron. Sin esto, el carrusel se vería vacío hasta el próximo tick del
-    // cron a 00:00 GMT+1, lo que confunde a QA y al usuario final.
-    let vendorProductIds: string[][];
-    if (rows.length === 0) {
-      const premiumUsers = await this.prisma.user.findMany({
-        where: {
-          plan: 'PREMIUM',
-          suspended: false,
-          OR: [
-            { planExpiresAt: null },
-            { planExpiresAt: { gt: new Date() } },
-          ],
+    // Vendedores elegibles HOY. Traemos ya sus 3 productos más recientes
+    // para poder resolver on-the-fly a los que aún no tienen fila del cron.
+    const premiumUsers = await this.prisma.user.findMany({
+      where: {
+        plan: 'PREMIUM',
+        suspended: false,
+        OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: new Date() } }],
+      },
+      // Orden estable: sin esto el round-robin cambia de posición en cada
+      // request según lo que devuelva Postgres.
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        products: {
+          where: { status: 'active' },
+          orderBy: { createdAt: 'desc' },
+          take: 3, // v2 Fase 11.5 — cap 3 por vendedor incluso sin cron
+          select: { id: true },
         },
-        select: {
-          id: true,
-          products: {
-            where: { status: 'active' },
-            orderBy: { createdAt: 'desc' },
-            take: 3, // v2 Fase 11.5 — cap 3 por vendedor incluso sin cron
-            select: { id: true },
-          },
-        },
-      });
-      vendorProductIds = premiumUsers
-        .map((u) => u.products.map((p) => p.id))
-        .filter((ids) => ids.length > 0);
-    } else {
-      // Cap defensivo: la fila del cron ya viene con máximo 3, pero forzarlo
-      // aquí protege contra migraciones futuras que ampliaran el pool sin
-      // actualizar el consumidor.
-      vendorProductIds = rows.map((r) => r.productIds.slice(0, 3));
-    }
+      },
+    });
+    if (premiumUsers.length === 0) return [];
+
+    const rows = await this.prisma.premiumCarouselDay.findMany({
+      where: { day: today, userId: { in: premiumUsers.map((u) => u.id) } },
+    });
+    // Cap defensivo: la fila del cron ya viene con máximo 3, pero forzarlo
+    // aquí protege contra migraciones futuras que ampliaran el pool sin
+    // actualizar el consumidor.
+    const pickedByUser = new Map(
+      rows.map((r) => [r.userId, r.productIds.slice(0, 3)]),
+    );
+
+    // v2 Fase 11.5 fallback, ahora por vendedor: si el cron no corrió todavía
+    // para hoy (deploy reciente, servidor recién arrancado, DST) o el
+    // vendedor subió a Premium después del último tick, computamos su hueco
+    // on-the-fly con el mismo cap 3. Sin persistir — es responsabilidad del
+    // cron. Sin esto, el vendedor se vería fuera del carrusel hasta el
+    // próximo tick a 00:00 GMT+1, lo que confunde a QA y al usuario final.
+    const vendorProductIds: string[][] = premiumUsers
+      .map(
+        (u) => pickedByUser.get(u.id) ?? u.products.map((p) => p.id),
+      )
+      .filter((ids) => ids.length > 0);
 
     const flatIds: string[] = interleaveByVendor(vendorProductIds).slice(
       0,

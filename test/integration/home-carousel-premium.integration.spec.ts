@@ -163,6 +163,60 @@ describe('HomeSectionsService.premiumCarousel (integration)', () => {
     expect(result.map((p) => p.sellerId)).toEqual([activePremium.id]);
   });
 
+  it('excluye la fila cacheada de un vendedor que ya no es Premium', async () => {
+    // El cron guardó la fila cuando el vendedor era Premium; hoy bajó a FREE.
+    // El carrusel se lee por plan actual, así que no debe salir.
+    const exPremium = await makeUser(prisma, { plan: 'FREE' });
+    const product = await makeProduct(prisma, {
+      sellerId: exPremium.id,
+      categoryId,
+    });
+    await prisma.premiumCarouselDay.create({
+      data: {
+        userId: exPremium.id,
+        day: startOfUtcDay(),
+        productIds: [product.id],
+      },
+    });
+
+    const result = await service.premiumCarousel();
+    expect(result).toEqual([]);
+  });
+
+  it('incluye al vendedor que subió a Premium hoy aunque otro ya tenga fila del cron', async () => {
+    // Con el fallback global (rows.length === 0) este caso se caía: bastaba
+    // una fila de otro vendedor para que el recién ascendido no apareciera
+    // hasta el tick de las 23:00 UTC.
+    const withRow = await makeUser(prisma, {
+      plan: 'PREMIUM',
+      planExpiresAt: new Date('2099-01-01'),
+    });
+    const justUpgraded = await makeUser(prisma, {
+      plan: 'PREMIUM',
+      planExpiresAt: new Date('2099-01-01'),
+    });
+    const cached = await makeProduct(prisma, {
+      sellerId: withRow.id,
+      categoryId,
+    });
+    const fresh = await makeProduct(prisma, {
+      sellerId: justUpgraded.id,
+      categoryId,
+    });
+    await prisma.premiumCarouselDay.create({
+      data: {
+        userId: withRow.id,
+        day: startOfUtcDay(),
+        productIds: [cached.id],
+      },
+    });
+
+    const result = await service.premiumCarousel();
+    expect(result.map((p) => p.id).sort()).toEqual(
+      [cached.id, fresh.id].sort(),
+    );
+  });
+
   it('respects the take cap', async () => {
     const s1 = await makeUser(prisma, { plan: 'PREMIUM' });
     const products = await Promise.all(
