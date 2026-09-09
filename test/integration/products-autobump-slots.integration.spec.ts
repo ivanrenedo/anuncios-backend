@@ -4,7 +4,7 @@ import { ProductsService } from '../../src/products/products.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { AuditService } from '../../src/audit/audit.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 /**
@@ -26,6 +26,7 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
       new EventEmitter2(),
       {} as AuditService,
       {} as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -56,7 +57,9 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
     expect(result.premiumBumped).toBe(0);
     expect(result.starBumped).toBe(0);
 
-    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    const after = await prisma.product.findUnique({
+      where: { id: product.id },
+    });
     expect(after!.bumpedAt.getTime()).toBe(staleAt.getTime());
   });
 
@@ -74,7 +77,9 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
     const result = await service.autoBump();
     expect(result.premiumBumped).toBe(1);
 
-    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    const after = await prisma.product.findUnique({
+      where: { id: product.id },
+    });
     expect(after!.bumpedAt.getTime()).toBeGreaterThan(twoDaysAgo.getTime());
   });
 
@@ -147,7 +152,9 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
 
     await service.setAutoBumpSlots(sellerId, [product.id]);
 
-    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    const after = await prisma.product.findUnique({
+      where: { id: product.id },
+    });
     expect(after!.bumpedAt.getTime()).toBeGreaterThan(oldBump.getTime());
   });
 
@@ -156,12 +163,16 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
     const product = await makeProduct(prisma, { sellerId, categoryId });
     // Primera pasada crea slot + bump instantáneo.
     await service.setAutoBumpSlots(sellerId, [product.id]);
-    const firstBump = (await prisma.product.findUnique({ where: { id: product.id } }))!.bumpedAt;
+    const firstBump = (await prisma.product.findUnique({
+      where: { id: product.id },
+    }))!.bumpedAt;
 
     // Un rato después, re-save con la misma lista (no diff): no debe re-bumpear.
     await new Promise((r) => setTimeout(r, 30));
     await service.setAutoBumpSlots(sellerId, [product.id]);
-    const secondBump = (await prisma.product.findUnique({ where: { id: product.id } }))!.bumpedAt;
+    const secondBump = (await prisma.product.findUnique({
+      where: { id: product.id },
+    }))!.bumpedAt;
 
     expect(secondBump.getTime()).toBe(firstBump.getTime());
   });
@@ -220,7 +231,9 @@ describe('ProductsService.autoBump (v2 slot pool, integration)', () => {
 
     const result = await service.autoBump();
     expect(result.boostedBumped).toBe(1);
-    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    const after = await prisma.product.findUnique({
+      where: { id: product.id },
+    });
     expect(after!.bumpedAt.getTime()).toBeGreaterThan(staleAt.getTime());
   });
 });

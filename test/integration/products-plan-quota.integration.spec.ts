@@ -6,7 +6,7 @@ import { StorageService } from '../../src/upload/storage.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { PLAN_LIMITS } from '../../src/common/plan-limits';
 import { UserPlan } from '../../src/users/dto/user-plan.enum';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 /**
@@ -30,6 +30,7 @@ describe('Plan quota enforcement (integration)', () => {
         deleteFile: jest.fn().mockResolvedValue(undefined),
         deleteFiles: jest.fn().mockResolvedValue(undefined),
       } as unknown as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -61,9 +62,18 @@ describe('Plan quota enforcement (integration)', () => {
   // the ternary in products.service.create hangs on (`==` vs `>=`) plus the
   // "under quota" pass to make sure a real seller isn't collateral-blocked.
   describe.each([
-    { plan: UserPlan.FREE, limit: PLAN_LIMITS[UserPlan.FREE].maxActiveProducts },
-    { plan: UserPlan.BASIC, limit: PLAN_LIMITS[UserPlan.BASIC].maxActiveProducts },
-    { plan: UserPlan.STAR, limit: PLAN_LIMITS[UserPlan.STAR].maxActiveProducts },
+    {
+      plan: UserPlan.FREE,
+      limit: PLAN_LIMITS[UserPlan.FREE].maxActiveProducts,
+    },
+    {
+      plan: UserPlan.BASIC,
+      limit: PLAN_LIMITS[UserPlan.BASIC].maxActiveProducts,
+    },
+    {
+      plan: UserPlan.STAR,
+      limit: PLAN_LIMITS[UserPlan.STAR].maxActiveProducts,
+    },
   ])('$plan (limit=$limit)', ({ plan, limit }) => {
     it(`blocks create when activeCount == limit`, async () => {
       const seller = await makeUser(prisma, {
@@ -109,7 +119,10 @@ describe('Plan quota enforcement (integration)', () => {
     // is what actually verifies the cap fires — if it silently passed, the
     // UI promise of "hasta 100" would be a lie the seller only spots after
     // sinking money in.
-    await seedActive(seller.id, PLAN_LIMITS[UserPlan.PREMIUM].maxActiveProducts);
+    await seedActive(
+      seller.id,
+      PLAN_LIMITS[UserPlan.PREMIUM].maxActiveProducts,
+    );
     await expect(
       service.create(seller.id, {
         title: 'over-premium',

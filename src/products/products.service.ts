@@ -15,17 +15,20 @@ import { MediaType, Prisma } from '@prisma/client';
 import { NotificationEvents } from '../notifications/notifications.events';
 import { EmailEvents, BoostReceiptEvent } from '../email/email.events';
 import {
-  PLAN_LIMITS,
   BOOST_PRICES,
   type BoostDuration,
   activePlan,
+  effectiveLimits,
 } from '../common/plan-limits';
+import { PlanPromoService } from '../plan-promo/plan-promo.service';
 import { UserPlan } from '../users/dto/user-plan.enum';
 import { AuditService } from '../audit/audit.service';
 import { StorageService } from '../upload/storage.service';
 
 type BoostBilling = {
   plan: UserPlan;
+  /** Boost is free because the platform-wide promo made boosts free. */
+  promoFree: boolean;
   duration: BoostDuration;
   basePrice: number;
   amount: number;
@@ -156,6 +159,7 @@ export class ProductsService {
     private events: EventEmitter2,
     private audit: AuditService,
     private storage: StorageService,
+    private promo: PlanPromoService,
   ) {}
 
   async findAll(take = 20, skip = 0) {
@@ -377,7 +381,7 @@ export class ProductsService {
       select: { plan: true, planExpiresAt: true },
     });
     const plan = this.activePlan(seller);
-    const limits = PLAN_LIMITS[plan];
+    const limits = effectiveLimits(plan, await this.promo.state());
 
     const activeCount = await this.prisma.product.count({
       where: { sellerId, status: 'active' },
@@ -454,7 +458,7 @@ export class ProductsService {
         select: { plan: true, planExpiresAt: true },
       });
       const plan = this.activePlan(seller);
-      const limits = PLAN_LIMITS[plan];
+      const limits = effectiveLimits(plan, await this.promo.state());
 
       if (incomingMediaCount > limits.maxImagesPerProduct) {
         throw new BadRequestException(
@@ -850,7 +854,9 @@ export class ProductsService {
       boostedUntil: until,
     });
 
-    const quotaLabel = billing.included
+    const quotaLabel = billing.promoFree
+      ? 'promo gratis'
+      : billing.included
       ? `incluido ${billing.usedThisMonth + 1}/${billing.includedPerMonth}`
       : billing.extraDiscountPct > 0
         ? `extra -${Math.round(billing.extraDiscountPct * 100)}%`
@@ -962,8 +968,10 @@ export class ProductsService {
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     const currentPlan = activePlan(user);
-    const { autoBumpSlots: max, autoBumpCadence: cadence } =
-      PLAN_LIMITS[currentPlan];
+    const { autoBumpSlots: max, autoBumpCadence: cadence } = effectiveLimits(
+      currentPlan,
+      await this.promo.state(),
+    );
     if (max === 0 || cadence == null) {
       throw new BadRequestException(
         'Tu plan actual no incluye auto-bump. Sube a Estrella o Premium.',
@@ -1054,17 +1062,26 @@ export class ProductsService {
     // DAILY seguían firing DIARIAMENTE aunque su plan actual no lo permite.
     // Ahora Premium → cadence DAILY, Star → cadence WEEKLY; el resto se
     // ignora hasta que el vendedor re-guarde su pool con la cadencia nueva.
-    const expectedPlan = cadence === 'DAILY' ? 'PREMIUM' : 'STAR';
+    // Mientras la promo abre auto-bump a todos, el plan del vendedor deja de
+    // filtrar: la cadencia guardada en el slot es la fuente de verdad y
+    // cualquier vendedor tiene derecho a ella.
+    const promo = await this.promo.state();
+    const planFilter: Prisma.ProductWhereInput =
+      promo.active && promo.unlockAutoBump
+        ? {}
+        : {
+            seller: {
+              plan: cadence === 'DAILY' ? UserPlan.PREMIUM : UserPlan.STAR,
+              OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
+            },
+          };
     const slots = await this.prisma.autoBumpSlot.findMany({
       where: {
         cadence,
         product: {
           status: 'active',
           bumpedAt: { lt: cutoff },
-          seller: {
-            plan: expectedPlan,
-            OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
-          },
+          ...planFilter,
         },
       },
       select: { productId: true },
@@ -1089,8 +1106,9 @@ export class ProductsService {
     });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
+    const promo = await this.promo.state();
     const plan = activePlan(user);
-    const limits = PLAN_LIMITS[plan];
+    const limits = effectiveLimits(plan, promo);
     const { startsAt, endsAt } = currentBoostCycle(user.planStartedAt, now);
     const usedThisMonth = await this.prisma.payment.count({
       where: {
@@ -1109,6 +1127,7 @@ export class ProductsService {
         0,
       ),
       extraDiscountPct: limits.extraBoostDiscountPct,
+      promoFree: promo.active && promo.freeBoosts,
       cycleStartsAt: startsAt,
       cycleEndsAt: endsAt,
     };
@@ -1121,10 +1140,14 @@ export class ProductsService {
   ): Promise<BoostBilling> {
     const quota = await this.boostQuotaFor(sellerId, now);
     const basePrice = BOOST_PRICES[duration];
-    const included = quota.remainingThisMonth > 0;
-    const amount = included
-      ? 0
-      : Math.round(basePrice * (1 - quota.extraDiscountPct));
+    // While boosts are promotional, every boost is free and never consumes
+    // (nor is blocked by) the monthly quota — `included` also gates the
+    // seller-facing mutation, which must not reject during the promo.
+    const included = quota.promoFree || quota.remainingThisMonth > 0;
+    const amount =
+      quota.promoFree || included
+        ? 0
+        : Math.round(basePrice * (1 - quota.extraDiscountPct));
 
     return {
       ...quota,

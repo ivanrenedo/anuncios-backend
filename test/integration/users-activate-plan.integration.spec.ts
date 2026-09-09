@@ -4,8 +4,9 @@ import { UsersService } from '../../src/users/users.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { PlanPromoService } from '../../src/plan-promo/plan-promo.service';
 import { UserPlan } from '../../src/users/dto/user-plan.enum';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser } from './factories';
 
 /**
@@ -40,6 +41,7 @@ describe('UsersService.activatePlan (integration)', () => {
       events,
       audit,
       {} as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -85,10 +87,14 @@ describe('UsersService.activatePlan (integration)', () => {
       expect(Number(payment.amount)).toBe(189_000);
       expect(payment.createdById).toBe(adminId);
 
-      const [planChange] = await prisma.planChange.findMany({ where: { userId } });
+      const [planChange] = await prisma.planChange.findMany({
+        where: { userId },
+      });
       expect(planChange.oldPlan).toBe('FREE');
       expect(planChange.newPlan).toBe('PREMIUM');
-      expect(planChange.expiresAt!.getTime()).toBe(user!.planExpiresAt!.getTime());
+      expect(planChange.expiresAt!.getTime()).toBe(
+        user!.planExpiresAt!.getTime(),
+      );
     });
 
     it('BASIC × 3 months applies 5 % discount: totalPaid = 8.550 XAF', async () => {
@@ -137,7 +143,9 @@ describe('UsersService.activatePlan (integration)', () => {
 
       // startsAt of the new activation == where the previous one ended.
       expect(activation.startsAt.getTime()).toBe(primeExpires.getTime());
-      expect(activation.endsAt.getTime()).toBe(primeExpires.getTime() + 3 * MONTH_MS);
+      expect(activation.endsAt.getTime()).toBe(
+        primeExpires.getTime() + 3 * MONTH_MS,
+      );
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
       expect(user!.planExpiresAt!.getTime()).toBe(activation.endsAt.getTime());
@@ -193,7 +201,9 @@ describe('UsersService.activatePlan (integration)', () => {
       // startsAt is now, NOT the original PREMIUM endsAt.
       expect(activation.startsAt.getTime()).toBeGreaterThanOrEqual(before);
       // endsAt is now + 3 months, not originalEnd + 3 months.
-      expect(activation.endsAt.getTime()).toBeLessThan(originalEnd.getTime() + 3 * MONTH_MS);
+      expect(activation.endsAt.getTime()).toBeLessThan(
+        originalEnd.getTime() + 3 * MONTH_MS,
+      );
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
       expect(user!.plan).toBe('BASIC');
@@ -205,7 +215,10 @@ describe('UsersService.activatePlan (integration)', () => {
     it('activating FREE still writes User + PlanChange + PlanActivation but NO Payment', async () => {
       await prisma.user.update({
         where: { id: userId },
-        data: { plan: 'STAR', planExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) },
+        data: {
+          plan: 'STAR',
+          planExpiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        },
       });
 
       await service.activatePlan(adminId, {
@@ -217,7 +230,9 @@ describe('UsersService.activatePlan (integration)', () => {
       const payments = await prisma.payment.findMany({ where: { userId } });
       expect(payments).toHaveLength(0);
 
-      const activations = await prisma.planActivation.findMany({ where: { userId } });
+      const activations = await prisma.planActivation.findMany({
+        where: { userId },
+      });
       expect(activations).toHaveLength(1);
       expect(Number(activations[0].totalPaid)).toBe(0);
     });
@@ -226,7 +241,11 @@ describe('UsersService.activatePlan (integration)', () => {
   describe('validation and side effects', () => {
     it('rejects months outside [1,12] with the pricing-engine error', async () => {
       await expect(
-        service.activatePlan(adminId, { userId, plan: UserPlan.PREMIUM, months: 13 }),
+        service.activatePlan(adminId, {
+          userId,
+          plan: UserPlan.PREMIUM,
+          months: 13,
+        }),
       ).rejects.toThrow(/months must be an integer/);
     });
 
@@ -284,7 +303,9 @@ describe('UsersService.activatePlan (integration)', () => {
         notes: 'WA ref #4821',
       });
 
-      const [activation] = await prisma.planActivation.findMany({ where: { userId } });
+      const [activation] = await prisma.planActivation.findMany({
+        where: { userId },
+      });
       expect(activation.notes).toBe('WA ref #4821');
 
       const [payment] = await prisma.payment.findMany({ where: { userId } });
@@ -303,6 +324,7 @@ describe('UsersService.planTotalPreview (unit)', () => {
       {} as EventEmitter2,
       {} as AuditService,
       {} as StorageService,
+      {} as PlanPromoService,
     );
   });
 

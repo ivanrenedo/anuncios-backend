@@ -4,7 +4,7 @@ import { ProductsService } from '../../src/products/products.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { AuditService } from '../../src/audit/audit.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 describe('ProductsService boost quotas (integration)', () => {
@@ -22,6 +22,7 @@ describe('ProductsService boost quotas (integration)', () => {
       new EventEmitter2(),
       audit,
       {} as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -59,9 +60,9 @@ describe('ProductsService boost quotas (integration)', () => {
     const product = await makeProduct(prisma, { sellerId, categoryId });
     await seedBoostPayments(8);
 
-    await expect(service.boostMyProduct(product.id, sellerId, 7)).rejects.toThrow(
-      /1000 XAF/i,
-    );
+    await expect(
+      service.boostMyProduct(product.id, sellerId, 7),
+    ).rejects.toThrow(/1000 XAF/i);
   });
 
   it('admin activation charges Premium extras at 50 percent off', async () => {

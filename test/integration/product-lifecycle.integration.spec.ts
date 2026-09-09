@@ -4,7 +4,7 @@ import { ProductsService } from '../../src/products/products.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory } from './factories';
 
 /**
@@ -30,6 +30,7 @@ describe('Product lifecycle (integration)', () => {
         deleteFile: jest.fn().mockResolvedValue(undefined),
         deleteFiles: jest.fn().mockResolvedValue(undefined),
       } as unknown as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -62,7 +63,12 @@ describe('Product lifecycle (integration)', () => {
     expect(firstSearch.map((p) => p.id)).toEqual([created.id]);
 
     // 3. Admin hides it
-    const hidden = await service.adminSetStatus(created.id, 'hide', 'looks dodgy', 'admin-x');
+    const hidden = await service.adminSetStatus(
+      created.id,
+      'hide',
+      'looks dodgy',
+      'admin-x',
+    );
     expect(hidden.status).toBe('hide');
 
     // 4. Buyer searches → NOT visible
@@ -70,7 +76,12 @@ describe('Product lifecycle (integration)', () => {
     expect(afterHide).toEqual([]);
 
     // 5. Admin restores
-    const restored = await service.adminSetStatus(created.id, 'active', undefined, 'admin-x');
+    const restored = await service.adminSetStatus(
+      created.id,
+      'active',
+      undefined,
+      'admin-x',
+    );
     expect(restored.status).toBe('active');
 
     // 6. Buyer searches → back
@@ -83,7 +94,9 @@ describe('Product lifecycle (integration)', () => {
     // 8. Buyer searches → gone
     const afterDelete = await service.search({ query: 'iphone' });
     expect(afterDelete).toEqual([]);
-    const dbAfter = await prisma.product.findUnique({ where: { id: created.id } });
+    const dbAfter = await prisma.product.findUnique({
+      where: { id: created.id },
+    });
     expect(dbAfter).toBeNull();
   });
 
@@ -121,7 +134,10 @@ describe('Product lifecycle (integration)', () => {
       where: { targetId: p.id },
       orderBy: { createdAt: 'asc' },
     });
-    expect(actions.map((a) => a.action)).toEqual(['hide_product', 'restore_product']);
+    expect(actions.map((a) => a.action)).toEqual([
+      'hide_product',
+      'restore_product',
+    ]);
     // Reason is used as detail for the hide (`hide_product`).
     expect(actions[0].detail).toBe('stolen');
     // For restore we passed no reason → falls back to the product title.

@@ -4,7 +4,7 @@ import { ProductsService } from '../../src/products/products.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 /**
@@ -35,6 +35,7 @@ describe('ProductsService.search (integration)', () => {
       new EventEmitter2(),
       {} as AuditService, // never touched in search flow
       {} as StorageService, // idem
+      newTestPromo(prisma),
     );
   });
 

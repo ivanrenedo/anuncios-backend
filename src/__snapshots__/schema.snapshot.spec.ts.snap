@@ -67,6 +67,7 @@ type BoostQuotaModel {
   extraDiscountPct: Float!
   includedPerMonth: Int!
   plan: UserPlan!
+  promoFree: Boolean!
   remainingThisMonth: Int!
   usedThisMonth: Int!
 }
@@ -408,6 +409,7 @@ type Mutation {
   unsuspendUser(id: String!): UserModel!
   updateCategory(id: String!, input: UpdateCategoryInput!): CategoryModel!
   updateHomeSection(id: String!, input: UpdateHomeSectionInput!): HomeSectionModel!
+  updatePlanPromo(input: UpdatePlanPromoInput!): PlanPromoModel!
   updateProduct(id: String!, input: UpdateProductInput!): ProductModel!
   updateReportStatus(id: String!, note: String, status: ReportStatus!): ReportModel!
   updateReview(id: String!, input: UpdateReviewInput!): ReviewModel!
@@ -416,6 +418,22 @@ type Mutation {
   verifyPhoneOtp(input: VerifyPhoneOtpInput!): OtpResponse!
   verifyPinChangeOtp(input: VerifyPinChangeOtpInput!): OtpResponse!
   viewProduct(id: String!, viewerKey: String): ProductModel!
+}
+
+type MyEntitlementsModel {
+  autoBumpCadence: String
+  autoBumpSlots: Int!
+  entitlementPlan: UserPlan!
+  extraBoostDiscountPct: Float!
+  freeBoosts: Boolean!
+  hasStats: Boolean!
+  includedBoostsPerMonth: Int!
+  maxActiveProducts: Int!
+  maxImagesPerProduct: Int!
+  pinnedProducts: Int!
+  plan: UserPlan!
+  promoActive: Boolean!
+  promoEndsAt: DateTime
 }
 
 type NotificationModel {
@@ -493,6 +511,21 @@ enum PlanCycle {
 type PlanDistributionEntry {
   count: Int!
   plan: UserPlan!
+}
+
+type PlanPromoModel {
+  active: Boolean!
+  bannerText: String
+  enabled: Boolean!
+  endsAt: DateTime
+  freeBoosts: Boolean!
+  grantedPlan: UserPlan!
+  startsAt: DateTime
+  unlockAutoBump: Boolean!
+  unlockLimits: Boolean!
+  unlockPinned: Boolean!
+  unlockStats: Boolean!
+  updatedAt: DateTime
 }
 
 type PlanStatsModel {
@@ -574,9 +607,22 @@ type PropertyDetailModel {
   surface: Int!
 }
 
+type PublicPlanPromoModel {
+  active: Boolean!
+  bannerText: String
+  endsAt: DateTime
+  freeBoosts: Boolean!
+  grantedPlan: UserPlan
+  unlockAutoBump: Boolean!
+  unlockLimits: Boolean!
+  unlockPinned: Boolean!
+  unlockStats: Boolean!
+}
+
 type Query {
   adminActions(skip: Int, take: Int): [AdminActionModel!]!
   adminHomeSections: [HomeSectionModel!]!
+  adminPlanPromo: PlanPromoModel!
   adminPlanStats(monthsBack: Int): PlanStatsModel!
   allProducts(query: String, skip: Int, take: Int): [ProductModel!]!
   businessContact: BusinessContactModel!
@@ -600,6 +646,7 @@ type Query {
   me: UserModel
   myAutoBumpSlots: [AutoBumpSlotModel!]!
   myBoostQuota: BoostQuotaModel!
+  myEntitlements: MyEntitlementsModel!
   myFavorites: [FavoriteModel!]!
   mySavedSearches: [SavedSearchModel!]!
   mySellerQrStats: SellerQrStatsModel!
@@ -610,6 +657,7 @@ type Query {
   pinnedProducts(userId: String!): [ProductModel!]!
   planActivations(userId: String!): [PlanActivationModel!]!
   planHistory(userId: String!): [PlanChangeModel!]!
+  planPromo: PublicPlanPromoModel!
   planTotalPreview(months: Int!, plan: UserPlan!): PlanTotalPreviewModel!
   previewFilterCount(filter: JSON!): Int!
   product(id: String!): ProductModel!
@@ -805,6 +853,19 @@ input UpdateHomeSectionInput {
   visible: Boolean
 }
 
+input UpdatePlanPromoInput {
+  bannerText: String
+  enabled: Boolean
+  endsAt: DateTime
+  freeBoosts: Boolean
+  grantedPlan: UserPlan
+  startsAt: DateTime
+  unlockAutoBump: Boolean
+  unlockLimits: Boolean
+  unlockPinned: Boolean
+  unlockStats: Boolean
+}
+
 input UpdateProductInput {
   categoryId: String
   city: String
@@ -861,6 +922,7 @@ type UserModel {
   createdAt: DateTime!
   effectivePlan: UserPlan
   email: String!
+  entitlementPlan: UserPlan
   id: ID!
   isBusiness: Boolean!
   language: String!

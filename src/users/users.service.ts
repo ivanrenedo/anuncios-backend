@@ -17,9 +17,10 @@ import { DEFAULT_ROLE_LABEL } from '../common/defaults';
 import {
   PLAN_CONCEPTS,
   PLAN_PRICES,
-  PLAN_LIMITS,
   activePlan,
+  effectiveLimits,
 } from '../common/plan-limits';
+import { PlanPromoService } from '../plan-promo/plan-promo.service';
 import {
   calculatePlanTotal,
   warnIfCheaperAtTwelve,
@@ -52,6 +53,7 @@ export class UsersService {
     private events: EventEmitter2,
     private audit: AuditService,
     private storage: StorageService,
+    private promo: PlanPromoService,
   ) {}
 
   /**
@@ -557,7 +559,8 @@ export class UsersService {
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     const currentPlan = activePlan(user);
-    const limit = PLAN_LIMITS[currentPlan].pinnedProducts;
+    const limit = effectiveLimits(currentPlan, await this.promo.state())
+      .pinnedProducts;
     if (limit === 0) {
       throw new BadRequestException(
         'Tu plan actual no permite anuncios fijados. Sube a Estrella o Premium.',

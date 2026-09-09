@@ -41,7 +41,9 @@ describe('PremiumCarouselCron.pickForDay (integration)', () => {
 
   it('with 5 active products on day 1, picks 3 (newest first, no history)', async () => {
     const products = await Promise.all(
-      Array.from({ length: 5 }).map(() => makeProduct(prisma, { sellerId, categoryId })),
+      Array.from({ length: 5 }).map(() =>
+        makeProduct(prisma, { sellerId, categoryId }),
+      ),
     );
     // Age them so createdAt tiebreak is deterministic — oldest first, newest last.
     for (let i = 0; i < products.length; i++) {
@@ -61,7 +63,11 @@ describe('PremiumCarouselCron.pickForDay (integration)', () => {
     expect(row).not.toBeNull();
     expect(row!.productIds).toHaveLength(3);
     // Newest 3 are the last three by createdAt.
-    expect(row!.productIds).toEqual([products[4].id, products[3].id, products[2].id]);
+    expect(row!.productIds).toEqual([
+      products[4].id,
+      products[3].id,
+      products[2].id,
+    ]);
   });
 
   it('with fewer than 3 active products, writes an array of exactly that length', async () => {
@@ -81,7 +87,9 @@ describe('PremiumCarouselCron.pickForDay (integration)', () => {
   it('fairness: after 3 days of picking A/B/C, day 4 picks D/E ahead of the veterans', async () => {
     // 5 products with fixed createdAt so ties are deterministic.
     const products = await Promise.all(
-      Array.from({ length: 5 }).map(() => makeProduct(prisma, { sellerId, categoryId })),
+      Array.from({ length: 5 }).map(() =>
+        makeProduct(prisma, { sellerId, categoryId }),
+      ),
     );
     for (let i = 0; i < products.length; i++) {
       await prisma.product.update({

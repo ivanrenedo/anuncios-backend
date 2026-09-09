@@ -36,14 +36,22 @@ describe('AuditService.log (integration)', () => {
     const admin = await makeUser(prisma);
 
     // The method is `void` — it must not require awaiting.
-    const rv = audit.log(admin.id, 'change_plan', 'user', admin.id, 'FREE → STAR');
+    const rv = audit.log(
+      admin.id,
+      'change_plan',
+      'user',
+      admin.id,
+      'FREE → STAR',
+    );
     expect(rv).toBeUndefined();
 
     // Give the internal promise a tick to persist.
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setTimeout(r, 20));
 
-    const rows = await prisma.adminAction.findMany({ where: { adminId: admin.id } });
+    const rows = await prisma.adminAction.findMany({
+      where: { adminId: admin.id },
+    });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       adminId: admin.id,
@@ -58,7 +66,9 @@ describe('AuditService.log (integration)', () => {
     audit.log(null, 'system_cleanup', 'user', 'ignored', 'nightly');
     await new Promise((r) => setTimeout(r, 20));
 
-    const rows = await prisma.adminAction.findMany({ where: { action: 'system_cleanup' } });
+    const rows = await prisma.adminAction.findMany({
+      where: { action: 'system_cleanup' },
+    });
     expect(rows).toHaveLength(1);
     expect(rows[0].adminId).toBeNull();
   });
@@ -68,7 +78,9 @@ describe('AuditService.log (integration)', () => {
     audit.log(null, 'oversize', 'user', 't', long);
     await new Promise((r) => setTimeout(r, 20));
 
-    const [row] = await prisma.adminAction.findMany({ where: { action: 'oversize' } });
+    const [row] = await prisma.adminAction.findMany({
+      where: { action: 'oversize' },
+    });
     expect(row.detail?.length).toBe(255);
   });
 
@@ -77,7 +89,13 @@ describe('AuditService.log (integration)', () => {
     // The synchronous call must still return void without throwing, and the
     // caller (any mutation) keeps going.
     expect(() =>
-      audit.log('00000000-0000-0000-0000-000000000000', 'boom', 'user', 't', 'x'),
+      audit.log(
+        '00000000-0000-0000-0000-000000000000',
+        'boom',
+        'user',
+        't',
+        'x',
+      ),
     ).not.toThrow();
 
     // The promise inside rejects asynchronously — let it settle and check

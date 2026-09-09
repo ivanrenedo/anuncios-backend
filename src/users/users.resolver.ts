@@ -3,7 +3,8 @@ import { UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserModel } from './dto/user.model';
 import { UserPlan } from './dto/user-plan.enum';
-import { activePlan } from '../common/plan-limits';
+import { activePlan, entitlementPlan } from '../common/plan-limits';
+import { PlanPromoService } from '../plan-promo/plan-promo.service';
 import { UpdateUserInput } from './dto/update-user.input';
 import { CreateUserInput } from './dto/create-user.input';
 import { AdminUpdateUserInput } from './dto/admin-update-user.input';
@@ -25,14 +26,36 @@ import { GetCurrentUserId } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => UserModel)
 export class UsersResolver {
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    private promo: PlanPromoService,
+  ) {}
 
+  /**
+   * Plan the user actually pays for, expiry applied. Drives badges, so it is
+   * deliberately *not* widened by the promotional period.
+   */
   @ResolveField(() => UserPlan, { nullable: true })
   effectivePlan(@Parent() user: UserModel): UserPlan {
     return activePlan({
       plan: user.plan ?? UserPlan.FREE,
       planExpiresAt: user.planExpiresAt ?? null,
     });
+  }
+
+  /**
+   * Plan whose *features* are in force: `effectivePlan` widened by whatever
+   * the platform promo unlocks. Clients gate capabilities on this one.
+   */
+  @ResolveField(() => UserPlan, { nullable: true })
+  async entitlementPlan(@Parent() user: UserModel): Promise<UserPlan> {
+    return entitlementPlan(
+      {
+        plan: user.plan ?? UserPlan.FREE,
+        planExpiresAt: user.planExpiresAt ?? null,
+      },
+      await this.promo.state(),
+    );
   }
 
   @Query(() => [UserModel])

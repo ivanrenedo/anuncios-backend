@@ -39,7 +39,8 @@ export async function makeCategory(
   // random tag so tests can create multiple categories without collision.
   const label = overrides.label ?? faker.commerce.department();
   const slug =
-    overrides.slug ?? `${faker.helpers.slugify(label).toLowerCase()}-${faker.string.alphanumeric(6)}`;
+    overrides.slug ??
+    `${faker.helpers.slugify(label).toLowerCase()}-${faker.string.alphanumeric(6)}`;
   return prisma.category.create({
     data: {
       label,
@@ -66,7 +67,9 @@ export async function makeProduct(
     data: {
       title: args.title ?? faker.commerce.productName(),
       description: args.description ?? faker.commerce.productDescription(),
-      price: new Prisma.Decimal(args.price ?? faker.number.int({ min: 1000, max: 50000 })),
+      price: new Prisma.Decimal(
+        args.price ?? faker.number.int({ min: 1000, max: 50000 }),
+      ),
       status: args.status ?? 'active',
       city: args.city ?? faker.location.city(),
       seller: { connect: { id: args.sellerId } },
