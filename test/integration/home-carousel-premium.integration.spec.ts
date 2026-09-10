@@ -52,10 +52,14 @@ describe('HomeSectionsService.premiumCarousel (integration)', () => {
     const s1 = await makeUser(prisma, { plan: 'PREMIUM' });
     const s2 = await makeUser(prisma, { plan: 'PREMIUM' });
     const s1p = await Promise.all(
-      Array.from({ length: 3 }).map(() => makeProduct(prisma, { sellerId: s1.id, categoryId })),
+      Array.from({ length: 3 }).map(() =>
+        makeProduct(prisma, { sellerId: s1.id, categoryId }),
+      ),
     );
     const s2p = await Promise.all(
-      Array.from({ length: 3 }).map(() => makeProduct(prisma, { sellerId: s2.id, categoryId })),
+      Array.from({ length: 3 }).map(() =>
+        makeProduct(prisma, { sellerId: s2.id, categoryId }),
+      ),
     );
 
     const today = startOfUtcDay();
@@ -119,7 +123,11 @@ describe('HomeSectionsService.premiumCarousel (integration)', () => {
     });
     const yesterday = new Date(startOfUtcDay().getTime() - 24 * 60 * 60 * 1000);
     await prisma.premiumCarouselDay.create({
-      data: { userId: s1.id, day: yesterday, productIds: [yesterdayProduct.id] },
+      data: {
+        userId: s1.id,
+        day: yesterday,
+        productIds: [yesterdayProduct.id],
+      },
     });
 
     const result = await service.premiumCarousel();
@@ -166,7 +174,9 @@ describe('HomeSectionsService.premiumCarousel (integration)', () => {
   it('respects the take cap', async () => {
     const s1 = await makeUser(prisma, { plan: 'PREMIUM' });
     const products = await Promise.all(
-      Array.from({ length: 3 }).map(() => makeProduct(prisma, { sellerId: s1.id, categoryId })),
+      Array.from({ length: 3 }).map(() =>
+        makeProduct(prisma, { sellerId: s1.id, categoryId }),
+      ),
     );
     await prisma.premiumCarouselDay.create({
       data: {

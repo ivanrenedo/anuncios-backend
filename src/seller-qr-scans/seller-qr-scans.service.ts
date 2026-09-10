@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { activePlan } from '../common/plan-limits';
-import { UserPlan } from '../users/dto/user-plan.enum';
+import { activePlan, hasStatsAccess } from '../common/plan-limits';
+import { PlanPromoService } from '../plan-promo/plan-promo.service';
 
 /** Two visits from the same visitor within this window count once. */
 const DEDUP_WINDOW_MS = 30 * 60 * 1000;
@@ -28,7 +28,10 @@ export interface TrackScanInput {
 
 @Injectable()
 export class SellerQrScansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly promo: PlanPromoService,
+  ) {}
 
   /**
    * Record a QR-driven visit to a seller's public profile. Silently no-ops
@@ -47,7 +50,8 @@ export class SellerQrScansService {
       plan: seller.plan,
       planExpiresAt: seller.planExpiresAt,
     });
-    if (plan !== UserPlan.STAR && plan !== UserPlan.PREMIUM) return false;
+    // Stats are a paid module, so the promo can open them to every seller.
+    if (!hasStatsAccess(plan, await this.promo.state())) return false;
 
     const ipHash = input.ip ? sha256(`${input.ip}|${SALT}`) : null;
     const visitorHash =

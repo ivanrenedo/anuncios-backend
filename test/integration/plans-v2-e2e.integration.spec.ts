@@ -9,7 +9,7 @@ import { NotificationsService } from '../../src/notifications/notifications.serv
 import { PremiumCarouselCron } from '../../src/home-sections/premium-carousel.cron';
 import { FollowerNotifyCron } from '../../src/notifications/follower-notify.cron';
 import { UserPlan } from '../../src/users/dto/user-plan.enum';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 /**
@@ -44,6 +44,7 @@ describe('plans-v2 end-to-end (integration)', () => {
       events,
       audit,
       {} as StorageService,
+      newTestPromo(prisma),
     );
     // NotificationsService stub — writes straight to `notification` so the E2E
     // asserts what would have been delivered without pulling in the full

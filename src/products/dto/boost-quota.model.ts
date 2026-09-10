@@ -18,6 +18,10 @@ export class BoostQuotaModel {
   @Field(() => Float)
   extraDiscountPct: number;
 
+  /** Boosts are free for everyone right now (promotional period). */
+  @Field()
+  promoFree: boolean;
+
   @Field()
   cycleStartsAt: Date;
 

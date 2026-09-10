@@ -84,7 +84,9 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
     expect(result.processedSellers).toBe(1);
     expect(result.notifiedFollowers).toBe(1);
 
-    const [notif] = await prisma.notification.findMany({ where: { userId: followerId } });
+    const [notif] = await prisma.notification.findMany({
+      where: { userId: followerId },
+    });
     expect(notif.title).toBe('Nueva publicación de un vendedor que sigues');
     expect(notif.body).toBe('Juan publicó "iPhone 12 usado".');
 
@@ -94,9 +96,21 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
 
   it('3 fresh products → 1 aggregated notification with "y 2 anuncios más"', async () => {
     const now = new Date();
-    const p1 = await makeProduct(prisma, { sellerId, categoryId, title: 'iPhone 12' });
-    const p2 = await makeProduct(prisma, { sellerId, categoryId, title: 'Cargador' });
-    const p3 = await makeProduct(prisma, { sellerId, categoryId, title: 'Funda' });
+    const p1 = await makeProduct(prisma, {
+      sellerId,
+      categoryId,
+      title: 'iPhone 12',
+    });
+    const p2 = await makeProduct(prisma, {
+      sellerId,
+      categoryId,
+      title: 'Cargador',
+    });
+    const p3 = await makeProduct(prisma, {
+      sellerId,
+      categoryId,
+      title: 'Funda',
+    });
     for (const p of [p1, p2, p3]) {
       await prisma.product.update({
         where: { id: p.id },
@@ -106,7 +120,9 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
 
     await cron.flushAt(now);
 
-    const notifs = await prisma.notification.findMany({ where: { userId: followerId } });
+    const notifs = await prisma.notification.findMany({
+      where: { userId: followerId },
+    });
     expect(notifs).toHaveLength(1);
     expect(notifs[0].body).toMatch(/y 2 anuncios más\.$/);
   });
@@ -122,7 +138,9 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
     }
 
     await cron.flushAt(now);
-    const [notif] = await prisma.notification.findMany({ where: { userId: followerId } });
+    const [notif] = await prisma.notification.findMany({
+      where: { userId: followerId },
+    });
     expect(notif.body).toBe('Juan publicó 5 anuncios nuevos.');
   });
 
@@ -143,7 +161,9 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
 
     const result = await cron.flushAt(now);
     expect(result.processedSellers).toBe(0);
-    const notifs = await prisma.notification.findMany({ where: { userId: followerId } });
+    const notifs = await prisma.notification.findMany({
+      where: { userId: followerId },
+    });
     expect(notifs).toHaveLength(0);
   });
 
@@ -164,7 +184,9 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
 
     const result = await cron.flushAt(now);
     expect(result.processedSellers).toBe(1);
-    const notifs = await prisma.notification.findMany({ where: { userId: followerId } });
+    const notifs = await prisma.notification.findMany({
+      where: { userId: followerId },
+    });
     expect(notifs).toHaveLength(1);
   });
 
@@ -178,7 +200,9 @@ describe('FollowerNotifyCron.flushAt (integration)', () => {
 
     const result = await cron.flushAt(now);
     expect(result.processedSellers).toBe(0);
-    const notifs = await prisma.notification.findMany({ where: { userId: followerId } });
+    const notifs = await prisma.notification.findMany({
+      where: { userId: followerId },
+    });
     expect(notifs).toHaveLength(0);
     // No batch was persisted either — first pass with no eligible products is
     // a full no-op so the very first eligible product later still fires.

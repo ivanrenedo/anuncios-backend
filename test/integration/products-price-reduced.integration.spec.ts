@@ -4,7 +4,7 @@ import { ProductsService } from '../../src/products/products.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { AuditService } from '../../src/audit/audit.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 /**
@@ -27,6 +27,7 @@ describe('ProductsService.update priceReducedUntil hook (integration)', () => {
       new EventEmitter2(),
       {} as AuditService,
       {} as StorageService,
+      newTestPromo(prisma),
     );
   });
 

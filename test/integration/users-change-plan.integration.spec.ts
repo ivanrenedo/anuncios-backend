@@ -4,7 +4,7 @@ import { UsersService } from '../../src/users/users.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser } from './factories';
 
 /**
@@ -31,6 +31,7 @@ describe('UsersService.changePlan (integration)', () => {
       events,
       audit,
       {} as StorageService, // not used by changePlan
+      newTestPromo(prisma),
     );
   });
 

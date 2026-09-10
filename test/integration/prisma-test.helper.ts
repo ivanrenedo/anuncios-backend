@@ -1,6 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { PlanPromoService } from '../../src/plan-promo/plan-promo.service';
+import { PrismaService } from '../../src/prisma/prisma.service';
+import { AuditService } from '../../src/audit/audit.service';
 
 const TEST_SCHEMA = 'marketplace_test';
 const url =
@@ -41,4 +44,17 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   if (rows.length === 0) return;
   const list = rows.map((r) => `"${TEST_SCHEMA}"."${r.tablename}"`).join(', ');
   await prisma.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+}
+
+/**
+ * Real `PlanPromoService` bound to the test schema. The promo singleton is
+ * created disabled, so services built with it behave exactly as they did
+ * before the promo existed; a test that wants the promo on writes the row and
+ * the service picks it up on its next (uncached) read.
+ */
+export function newTestPromo(prisma: PrismaClient): PlanPromoService {
+  return new PlanPromoService(
+    prisma as unknown as PrismaService,
+    new AuditService(prisma as unknown as PrismaService),
+  );
 }

@@ -8,7 +8,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyPin } from '../common/pin.util';
 import { DEFAULT_ROLE_LABEL } from '../common/defaults';
-import { PLAN_LIMITS, activePlan } from '../common/plan-limits';
+import { activePlan, effectiveLimits } from '../common/plan-limits';
+import { PlanPromoService } from '../plan-promo/plan-promo.service';
 import { EmailEvents, UserRegisteredEvent } from '../email/email.events';
 
 interface GooglePayload {
@@ -24,6 +25,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private events: EventEmitter2,
+    private promo: PlanPromoService,
   ) {}
 
   async validateOrCreateUser(payload: GooglePayload) {
@@ -141,8 +143,10 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) return null;
+    // `effectivePlan` stays the plan actually paid for (badges depend on it);
+    // the limits below are the promo-widened ones the seller can really use.
     const effective = activePlan(user);
-    const limits = PLAN_LIMITS[effective];
+    const limits = effectiveLimits(effective, await this.promo.state());
     return {
       ...user,
       effectivePlan: effective,

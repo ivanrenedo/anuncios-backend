@@ -27,9 +27,16 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
   const mockGqlContextWithUser = (userId: string | null): ExecutionContext =>
     createMock<ExecutionContext>({
       getType: () => 'graphql',
-      getArgs: () => [undefined, {}, { req: userId ? { user: { id: userId } } : {} }, {}],
+      getArgs: () => [
+        undefined,
+        {},
+        { req: userId ? { user: { id: userId } } : {} },
+        {},
+      ],
       getArgByIndex: (i: number) =>
-        [undefined, {}, { req: userId ? { user: { id: userId } } : {} }, {}][i] as unknown,
+        [undefined, {}, { req: userId ? { user: { id: userId } } : {} }, {}][
+          i
+        ] as unknown,
     });
 
   beforeAll(() => {
@@ -48,7 +55,11 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
 
   async function seedRole(label: string) {
     return prisma.rol.create({
-      data: { label, description: label, actions: ['read', 'update', 'delete'] },
+      data: {
+        label,
+        description: label,
+        actions: ['read', 'update', 'delete'],
+      },
     });
   }
 
@@ -74,7 +85,9 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
     const admin = await makeUser(prisma, { rol: { connect: { id: role.id } } });
     const ids = await seedAdminActions(3);
 
-    await expect(guard.canActivate(mockGqlContextWithUser(admin.id))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(mockGqlContextWithUser(admin.id)),
+    ).resolves.toBe(true);
 
     const deleted = await audit.deleteMany(ids);
     expect(deleted).toBe(3);
@@ -87,19 +100,23 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
     const role = await seedRole('super-admin');
     const admin = await makeUser(prisma, { rol: { connect: { id: role.id } } });
 
-    await expect(guard.canActivate(mockGqlContextWithUser(admin.id))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(mockGqlContextWithUser(admin.id)),
+    ).resolves.toBe(true);
   });
 
   it.each(['USER', 'MODERATOR', 'ADMIN'])(
     'role %p is rejected — audit rows survive',
     async (label) => {
       const role = await seedRole(label);
-      const user = await makeUser(prisma, { rol: { connect: { id: role.id } } });
+      const user = await makeUser(prisma, {
+        rol: { connect: { id: role.id } },
+      });
       const ids = await seedAdminActions(2);
 
-      await expect(guard.canActivate(mockGqlContextWithUser(user.id))).rejects.toThrow(
-        'Solo un SUPER_ADMIN puede hacer esto',
-      );
+      await expect(
+        guard.canActivate(mockGqlContextWithUser(user.id)),
+      ).rejects.toThrow('Solo un SUPER_ADMIN puede hacer esto');
 
       // Guard blocked, service should never run — rows untouched.
       const remaining = await prisma.adminAction.count();
@@ -110,16 +127,16 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
 
   it('user without any role assigned is rejected', async () => {
     const user = await makeUser(prisma); // makeUser leaves rolId null by default
-    await expect(guard.canActivate(mockGqlContextWithUser(user.id))).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      guard.canActivate(mockGqlContextWithUser(user.id)),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('unauthenticated request (no user on ctx) is rejected before hitting DB', async () => {
     const spy = jest.spyOn(prisma.user, 'findUnique');
-    await expect(guard.canActivate(mockGqlContextWithUser(null))).rejects.toThrow(
-      'No autorizado',
-    );
+    await expect(
+      guard.canActivate(mockGqlContextWithUser(null)),
+    ).rejects.toThrow('No autorizado');
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
@@ -129,10 +146,14 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
     const userRole = await prisma.rol.create({
       data: { label: 'USER', description: 'demoted', actions: [] },
     });
-    const admin = await makeUser(prisma, { rol: { connect: { id: superRole.id } } });
+    const admin = await makeUser(prisma, {
+      rol: { connect: { id: superRole.id } },
+    });
 
     // First call — SUPER_ADMIN.
-    await expect(guard.canActivate(mockGqlContextWithUser(admin.id))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(mockGqlContextWithUser(admin.id)),
+    ).resolves.toBe(true);
 
     // Demote in-flight.
     await prisma.user.update({
@@ -141,8 +162,8 @@ describe('SUPER_ADMIN gate for deleteAdminActions (integration)', () => {
     });
 
     // Next call — the guard doesn't cache, so the new role kicks in.
-    await expect(guard.canActivate(mockGqlContextWithUser(admin.id))).rejects.toThrow(
-      'Solo un SUPER_ADMIN puede hacer esto',
-    );
+    await expect(
+      guard.canActivate(mockGqlContextWithUser(admin.id)),
+    ).rejects.toThrow('Solo un SUPER_ADMIN puede hacer esto');
   });
 });

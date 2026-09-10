@@ -4,7 +4,7 @@ import { ProductsService } from '../../src/products/products.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory } from './factories';
 
 /**
@@ -17,7 +17,9 @@ import { makeUser, makeCategory } from './factories';
 describe('ProductsService.update image-diff cleanup (integration)', () => {
   let prisma: PrismaClient;
   let service: ProductsService;
-  let storageMock: jest.Mocked<Pick<StorageService, 'deleteFiles' | 'deleteFile'>>;
+  let storageMock: jest.Mocked<
+    Pick<StorageService, 'deleteFiles' | 'deleteFile'>
+  >;
   let sellerId: string;
   let categoryId: string;
 
@@ -34,6 +36,7 @@ describe('ProductsService.update image-diff cleanup (integration)', () => {
       new EventEmitter2(),
       { log: jest.fn() } as unknown as AuditService,
       storageMock as unknown as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -69,33 +72,51 @@ describe('ProductsService.update image-diff cleanup (integration)', () => {
   };
 
   it('full replacement: every old URL is passed to storage.deleteFiles', async () => {
-    const product = await createProductWithImages(['/uploads/a.jpg', '/uploads/b.jpg']);
+    const product = await createProductWithImages([
+      '/uploads/a.jpg',
+      '/uploads/b.jpg',
+    ]);
 
     await service.update(product.id, sellerId, {
       imageUrls: ['/uploads/c.jpg', '/uploads/d.jpg'],
     } as any);
 
     expect(storageMock.deleteFiles).toHaveBeenCalledTimes(1);
-    const dropped: string[] = storageMock.deleteFiles.mock.calls[0][0] as string[];
-    expect(new Set(dropped)).toEqual(new Set(['/uploads/a.jpg', '/uploads/b.jpg']));
+    const dropped: string[] = storageMock.deleteFiles.mock
+      .calls[0][0] as string[];
+    expect(new Set(dropped)).toEqual(
+      new Set(['/uploads/a.jpg', '/uploads/b.jpg']),
+    );
 
-    const rows = await prisma.productImage.findMany({ where: { productId: product.id } });
-    expect(rows.map((r) => r.url).sort()).toEqual(['/uploads/c.jpg', '/uploads/d.jpg']);
+    const rows = await prisma.productImage.findMany({
+      where: { productId: product.id },
+    });
+    expect(rows.map((r) => r.url).sort()).toEqual([
+      '/uploads/c.jpg',
+      '/uploads/d.jpg',
+    ]);
   });
 
   it('partial replacement: only the dropped URL is deleted (kept one stays)', async () => {
-    const product = await createProductWithImages(['/uploads/a.jpg', '/uploads/b.jpg']);
+    const product = await createProductWithImages([
+      '/uploads/a.jpg',
+      '/uploads/b.jpg',
+    ]);
 
     await service.update(product.id, sellerId, {
       imageUrls: ['/uploads/a.jpg', '/uploads/c.jpg'],
     } as any);
 
-    const dropped: string[] = storageMock.deleteFiles.mock.calls[0][0] as string[];
+    const dropped: string[] = storageMock.deleteFiles.mock
+      .calls[0][0] as string[];
     expect(dropped).toEqual(['/uploads/b.jpg']);
   });
 
   it('same URLs again: deleteFiles is not called', async () => {
-    const product = await createProductWithImages(['/uploads/a.jpg', '/uploads/b.jpg']);
+    const product = await createProductWithImages([
+      '/uploads/a.jpg',
+      '/uploads/b.jpg',
+    ]);
 
     await service.update(product.id, sellerId, {
       imageUrls: ['/uploads/a.jpg', '/uploads/b.jpg'],
@@ -126,7 +147,9 @@ describe('ProductsService.update image-diff cleanup (integration)', () => {
     } as any);
 
     expect(storageMock.deleteFiles).not.toHaveBeenCalled();
-    const rows = await prisma.productImage.findMany({ where: { productId: product.id } });
+    const rows = await prisma.productImage.findMany({
+      where: { productId: product.id },
+    });
     expect(rows.map((r) => r.url)).toEqual(['/uploads/a.jpg']);
   });
 
@@ -142,8 +165,16 @@ describe('ProductsService.update image-diff cleanup (integration)', () => {
         category: { connect: { id: categoryId } },
         images: {
           create: [
-            { url: '/uploads/a.mp4', thumbnailUrl: '/uploads/a-thumb.jpg', sortOrder: 0 },
-            { url: '/uploads/b.mp4', thumbnailUrl: '/uploads/b-thumb.jpg', sortOrder: 1 },
+            {
+              url: '/uploads/a.mp4',
+              thumbnailUrl: '/uploads/a-thumb.jpg',
+              sortOrder: 0,
+            },
+            {
+              url: '/uploads/b.mp4',
+              thumbnailUrl: '/uploads/b-thumb.jpg',
+              sortOrder: 1,
+            },
           ],
         },
       },
@@ -151,8 +182,16 @@ describe('ProductsService.update image-diff cleanup (integration)', () => {
 
     await service.update(product.id, sellerId, {
       mediaItems: [
-        { url: '/uploads/a.mp4', type: 'video', thumbnailUrl: '/uploads/a-thumb.jpg' },
-        { url: '/uploads/z.mp4', type: 'video', thumbnailUrl: '/uploads/z-thumb.jpg' },
+        {
+          url: '/uploads/a.mp4',
+          type: 'video',
+          thumbnailUrl: '/uploads/a-thumb.jpg',
+        },
+        {
+          url: '/uploads/z.mp4',
+          type: 'video',
+          thumbnailUrl: '/uploads/z-thumb.jpg',
+        },
       ],
     } as any);
 
@@ -174,7 +213,9 @@ describe('ProductsService.update image-diff cleanup (integration)', () => {
 
     // The ForbiddenException fires BEFORE any DB or storage side-effect —
     // the original image row must still be there.
-    const rows = await prisma.productImage.findMany({ where: { productId: product.id } });
+    const rows = await prisma.productImage.findMany({
+      where: { productId: product.id },
+    });
     expect(rows).toHaveLength(1);
     expect(storageMock.deleteFiles).not.toHaveBeenCalled();
   });

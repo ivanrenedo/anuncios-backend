@@ -5,7 +5,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { StorageService } from '../../src/upload/storage.service';
 import { AuditService } from '../../src/audit/audit.service';
 import { UserPlan } from '../../src/users/dto/user-plan.enum';
-import { newTestPrisma, truncateAll } from './prisma-test.helper';
+import { newTestPrisma, truncateAll, newTestPromo } from './prisma-test.helper';
 import { makeUser, makeCategory, makeProduct } from './factories';
 
 /**
@@ -30,6 +30,7 @@ describe('UsersService.setPinnedProducts (integration)', () => {
       new EventEmitter2(),
       {} as AuditService,
       {} as StorageService,
+      newTestPromo(prisma),
     );
   });
 
@@ -49,7 +50,10 @@ describe('UsersService.setPinnedProducts (integration)', () => {
   });
 
   it('Free plan is forbidden from pinning anything', async () => {
-    await prisma.user.update({ where: { id: sellerId }, data: { plan: 'FREE' } });
+    await prisma.user.update({
+      where: { id: sellerId },
+      data: { plan: 'FREE' },
+    });
     const p = await makeProduct(prisma, { sellerId, categoryId });
     await expect(service.setPinnedProducts(sellerId, [p.id])).rejects.toThrow(
       /no permite anuncios fijados/i,
@@ -57,7 +61,10 @@ describe('UsersService.setPinnedProducts (integration)', () => {
   });
 
   it('Basic plan is also forbidden', async () => {
-    await prisma.user.update({ where: { id: sellerId }, data: { plan: 'BASIC' } });
+    await prisma.user.update({
+      where: { id: sellerId },
+      data: { plan: 'BASIC' },
+    });
     const p = await makeProduct(prisma, { sellerId, categoryId });
     await expect(service.setPinnedProducts(sellerId, [p.id])).rejects.toThrow(
       /no permite anuncios fijados/i,
@@ -66,7 +73,9 @@ describe('UsersService.setPinnedProducts (integration)', () => {
 
   it('Star plan allows up to 4 pins in the exact order supplied', async () => {
     const products = await Promise.all(
-      Array.from({ length: 4 }).map(() => makeProduct(prisma, { sellerId, categoryId })),
+      Array.from({ length: 4 }).map(() =>
+        makeProduct(prisma, { sellerId, categoryId }),
+      ),
     );
     const ids = products.map((p) => p.id);
 
@@ -88,17 +97,27 @@ describe('UsersService.setPinnedProducts (integration)', () => {
 
   it('Star plan rejects a 5th pin (limit 4)', async () => {
     const products = await Promise.all(
-      Array.from({ length: 5 }).map(() => makeProduct(prisma, { sellerId, categoryId })),
+      Array.from({ length: 5 }).map(() =>
+        makeProduct(prisma, { sellerId, categoryId }),
+      ),
     );
     await expect(
-      service.setPinnedProducts(sellerId, products.map((p) => p.id)),
+      service.setPinnedProducts(
+        sellerId,
+        products.map((p) => p.id),
+      ),
     ).rejects.toThrow(/hasta 4 anuncios fijados/i);
   });
 
   it('Premium plan lifts the limit to 10', async () => {
-    await prisma.user.update({ where: { id: sellerId }, data: { plan: 'PREMIUM' } });
+    await prisma.user.update({
+      where: { id: sellerId },
+      data: { plan: 'PREMIUM' },
+    });
     const products = await Promise.all(
-      Array.from({ length: 10 }).map(() => makeProduct(prisma, { sellerId, categoryId })),
+      Array.from({ length: 10 }).map(() =>
+        makeProduct(prisma, { sellerId, categoryId }),
+      ),
     );
     const result = await service.setPinnedProducts(
       sellerId,
@@ -119,22 +138,28 @@ describe('UsersService.setPinnedProducts (integration)', () => {
   });
 
   it('rejects a hidden product', async () => {
-    const hidden = await makeProduct(prisma, { sellerId, categoryId, status: 'hide' });
-    await expect(service.setPinnedProducts(sellerId, [hidden.id])).rejects.toThrow(
-      /tuyos y estar activos/i,
-    );
+    const hidden = await makeProduct(prisma, {
+      sellerId,
+      categoryId,
+      status: 'hide',
+    });
+    await expect(
+      service.setPinnedProducts(sellerId, [hidden.id]),
+    ).rejects.toThrow(/tuyos y estar activos/i);
   });
 
   it('rejects duplicate ids in the input', async () => {
     const p = await makeProduct(prisma, { sellerId, categoryId });
-    await expect(service.setPinnedProducts(sellerId, [p.id, p.id])).rejects.toThrow(
-      /no pueden repetirse/i,
-    );
+    await expect(
+      service.setPinnedProducts(sellerId, [p.id, p.id]),
+    ).rejects.toThrow(/no pueden repetirse/i);
   });
 
   it('replaces the previous pin list on re-write (idempotent)', async () => {
     const [p1, p2, p3] = await Promise.all(
-      Array.from({ length: 3 }).map(() => makeProduct(prisma, { sellerId, categoryId })),
+      Array.from({ length: 3 }).map(() =>
+        makeProduct(prisma, { sellerId, categoryId }),
+      ),
     );
     await service.setPinnedProducts(sellerId, [p1.id, p2.id]);
     await service.setPinnedProducts(sellerId, [p3.id]);
@@ -152,7 +177,9 @@ describe('UsersService.setPinnedProducts (integration)', () => {
     await service.setPinnedProducts(sellerId, [p.id]);
     const result = await service.setPinnedProducts(sellerId, []);
     expect(result).toHaveLength(0);
-    const count = await prisma.pinnedProduct.count({ where: { userId: sellerId } });
+    const count = await prisma.pinnedProduct.count({
+      where: { userId: sellerId },
+    });
     expect(count).toBe(0);
   });
 });

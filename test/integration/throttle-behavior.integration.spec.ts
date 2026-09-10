@@ -2,11 +2,7 @@ import { Controller, Get, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import {
-  Throttle,
-  ThrottlerGuard,
-  ThrottlerModule,
-} from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 // supertest is CJS with a callable default export — namespace import fails
 // under ts-jest's strict mode; use the CommonJS import form instead.
 import request = require('supertest');

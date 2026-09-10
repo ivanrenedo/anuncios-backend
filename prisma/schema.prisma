@@ -793,3 +793,35 @@ model FollowerNotifyBatch {
   @@index([userId, batchedAt])
   @@map("follower_notify_batches")
 }
+
+/// Singleton row (id = "singleton") holding the platform-wide promotional
+/// override: while it is active every seller is *entitled* to the features of
+/// `grantedPlan` regardless of what they pay for, and paid modules can be
+/// switched to free one by one. Their stored `plan` is untouched, so badges,
+/// the premium carousel and the billing ledger keep reflecting reality — the
+/// promo only widens what a seller is allowed to do.
+model PlanPromo {
+  id          String   @id @default("singleton")
+  /// Master switch. The promo is only in force when this is true AND `now`
+  /// falls inside the [startsAt, endsAt] window (null bound = open-ended).
+  enabled     Boolean  @default(false)
+  startsAt    DateTime? @map("starts_at")
+  endsAt      DateTime? @map("ends_at")
+  /// Plan whose limits everyone gets while the promo runs.
+  grantedPlan UserPlan @default(PREMIUM) @map("granted_plan")
+
+  /// Per-module switches, so cobros can be re-enabled by phases.
+  unlockLimits   Boolean @default(true) @map("unlock_limits")
+  unlockPinned   Boolean @default(true) @map("unlock_pinned")
+  unlockAutoBump Boolean @default(true) @map("unlock_auto_bump")
+  unlockStats    Boolean @default(true) @map("unlock_stats")
+  freeBoosts     Boolean @default(true) @map("free_boosts")
+
+  /// Copy shown in the apps' promo banner. Null = clients use their default.
+  bannerText String?  @map("banner_text") @db.VarChar(160)
+
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id")
+
+  @@map("plan_promo")
+}

@@ -33,6 +33,7 @@ import { ExportModule } from './export/export.module';
 import { HealthModule } from './health/health.module';
 import { EmailModule } from './email/email.module';
 import { SellerQrScansModule } from './seller-qr-scans/seller-qr-scans.module';
+import { PlanPromoModule } from './plan-promo/plan-promo.module';
 
 @Module({
   imports: [
@@ -150,6 +151,7 @@ import { SellerQrScansModule } from './seller-qr-scans/seller-qr-scans.module';
     HealthModule,
     EmailModule,
     SellerQrScansModule,
+    PlanPromoModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: GqlThrottlerGuard }],
 })
